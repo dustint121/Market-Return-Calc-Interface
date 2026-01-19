@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="box">
+  <h2>SP500 Returns Calculator (1975–2025)</h2>
+
+  <form id="returns-form">
+    <div style="margin-bottom: 16px;">
+      <label>Start year: <span id="start-year-label">{{ start_year }}</span></label><br>
+      <input type="range" id="start-year" name="start_year"
+             min="{{ start_year }}" max="{{ end_year }}" value="{{ start_year }}">
+    </div>
+
+    <div style="margin-bottom: 16px;">
+      <label>End year: <span id="end-year-label">{{ end_year }}</span></label><br>
+      <input type="range" id="end-year" name="end_year"
+             min="{{ start_year }}" max="{{ end_year }}" value="{{ end_year }}">
+    </div>
+
+    <div style="margin-bottom: 16px;">
+    <label>Contribution per interval ($):</label><br>
+    <input type="number" id="contribution" name="contribution"
+            value="100" min="1" step="1" class="rounded-input">
+    </div>
+
+    <div class="section-box">
+        <h3 style="margin-top: 0;">Investing Intervals</h3>
+        <div class="interval-box">
+        <label><input type="radio" name="interval" value="weekly" checked> Weekly</label><br>
+        <label><input type="radio" name="interval" value="monthly"> Monthly</label><br>
+        <label><input type="radio" name="interval" value="quarterly"> Quarterly</label><br>
+        <label><input type="radio" name="interval" value="biannual"> Biannual</label><br>
+        <label><input type="radio" name="interval" value="annually"> Annually</label><br>
+        <label>
+            <input type="radio" name="interval" value="custom"> Custom (every
+            <input type="number" id="custom-days" min="1" style="width: 70px;" disabled> days)
+        </label>
+        </div>
+    </div>
+
+    <button type="submit" class="pill-button">Calculate</button>
+  </form>
+
+  <div id="results" class="section-box" style="margin-top: 20px; display:none;">
+    <h3 style="margin-top: 0;">Results</h3>
+    <p>Total invested: <span id="total-invested"></span></p>
+    <p>Final value: <span id="final-value"></span></p>
+    <p>Total return: <span id="total-return"></span></p>
+    <p>Total return %: <span id="total-return-pct"></span></p>
+  </div>
+
+  <div id="error" style="margin-top: 12px; color: red;"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const startSlider = document.getElementById('start-year');
+  const endSlider = document.getElementById('end-year');
+  const startLabel = document.getElementById('start-year-label');
+  const endLabel = document.getElementById('end-year-label');
+  const customDaysInput = document.getElementById('custom-days');
+
+  function clampYears() {
+    let s = parseInt(startSlider.value);
+    let e = parseInt(endSlider.value);
+    if (s > e) {
+      if (this === startSlider) {
+        endSlider.value = s;
+        e = s;
+      } else {
+        startSlider.value = e;
+        s = e;
+      }
+    }
+    startLabel.textContent = s;
+    endLabel.textContent = e;
+  }
+
+  startSlider.addEventListener('input', clampYears);
+  endSlider.addEventListener('input', clampYears);
+
+  document.querySelectorAll('input[name="interval"]').forEach(r => {
+    r.addEventListener('change', () => {
+      if (r.value === 'custom' && r.checked) {
+        customDaysInput.disabled = false;
+      } else if (r.checked) {
+        customDaysInput.disabled = true;
+        customDaysInput.value = '';
+      }
+    });
+  });
+
+  document.getElementById('returns-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const interval = document.querySelector('input[name="interval"]:checked').value;
+    const payload = {
+      start_year: parseInt(startSlider.value),
+      end_year: parseInt(endSlider.value),
+      contribution: parseFloat(document.getElementById('contribution').value || '0'),
+      interval: interval,
+      custom_days: interval === 'custom' ? parseInt(customDaysInput.value || '0') : 0
+    };
+
+    const errorEl = document.getElementById('error');
+    const resultsEl = document.getElementById('results');
+    errorEl.textContent = '';
+    resultsEl.style.display = 'none';
+
+    try {
+      const resp = await fetch('/api/returns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        errorEl.textContent = data.error || 'Error computing returns.';
+        return;
+      }
+      document.getElementById('total-invested').textContent = `$${data.total_invested.toLocaleString()}`;
+      document.getElementById('final-value').textContent = `$${data.final_value.toLocaleString()}`;
+      document.getElementById('total-return').textContent = `$${data.total_return.toLocaleString()}`;
+      document.getElementById('total-return-pct').textContent = `${data.total_return_pct}%`;
+      resultsEl.style.display = 'block';
+    } catch (err) {
+      console.error(err);
+      errorEl.textContent = 'Unexpected error.';
+    }
+  });
+</script>
+{% endblock %}

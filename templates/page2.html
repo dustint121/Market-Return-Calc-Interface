@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="box">
+  <h2>SP500 Treemap Snapshots</h2>
+  {% if files %}
+
+    {# Group files into year -> month -> [filenames] #}
+    {% set grouped = {} %}
+    {% for name in files %}
+      {% set base = name.replace('_treemap.html', '') %} {# YYYY-MM-DD #}
+      {% set year = base[:4] %}
+      {% set month = base[5:7] %}
+      {% if year not in grouped %}
+        {% set _ = grouped.update({year: {}}) %}
+      {% endif %}
+      {% if month not in grouped[year] %}
+        {% set _ = grouped[year].update({month: []}) %}
+      {% endif %}
+      {% set _ = grouped[year][month].append(name) %}
+    {% endfor %}
+
+    <div>
+      {# Loop years descending (most recent first) #}
+      {% for year in grouped.keys()|list|sort(reverse=true) %}
+        <details style="margin-bottom: 8px;" open>
+          <summary style="cursor: pointer; font-weight: 600;">
+            {{ year }}
+          </summary>
+
+          <div style="margin-left: 12px; margin-top: 4px;">
+            {# Loop months descending; convert month number to month name #}
+            {% for month in grouped[year].keys()|list|sort(reverse=true) %}
+              {% set month_names = {
+                '01': 'January', '02': 'February', '03': 'March', '04': 'April',
+                '05': 'May', '06': 'June', '07': 'July', '08': 'August',
+                '09': 'September', '10': 'October', '11': 'November', '12': 'December'
+              } %}
+              {% set month_label = month_names[month] %}
+
+              <details style="margin-bottom: 4px;">
+                <summary style="cursor: pointer;">
+                  {{ month_label }}
+                </summary>
+
+                <div class="treemap-tabs" style="margin-left: 12px; margin-top: 4px;">
+                  {# Reverse within each month to show latest date first #}
+                  {% for name in grouped[year][month]|reverse %}
+                    {% set date_str = name.replace('_treemap.html', '') %}
+                    <a href="{{ url_for('treemap_file', filename=name) }}"
+                       target="_blank"
+                       class="treemap-tab">
+                      {{ date_str }}
+                    </a>
+                  {% endfor %}
+                </div>
+              </details>
+            {% endfor %}
+          </div>
+        </details>
+      {% endfor %}
+    </div>
+
+  {% else %}
+    <p>No treemap files found in the treemaps folder.</p>
+  {% endif %}
+</div>
+{% endblock %}

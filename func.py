@@ -18,14 +18,19 @@ def is_trading_day(date_str):
 
 
 # Function to fetch S&P 500 index values using yfinance
-def fetch_SP500_index_data_yf(start_year=1975):
+def fetch_SP500_index_data_yf(start_year=None, end_year=None):
     """
     Fetches the historical data for the S&P 500 index from Yahoo Finance
     and returns it as a pandas DataFrame.
     """
+    if start_year is None:
+        start_year = 1975
+    if end_year is None:
+        end_year = datetime.now().year
+
     start_date = f"{start_year}-01-01"
     sp500 = yf.Ticker("^GSPC")
-    df = sp500.history(start=start_date)
+    df = sp500.history(start=start_date, end=f"{end_year}-12-31", interval="1d")
 
     # index is date, reset it and make a 'date' column
     df["Date"] = df.index
@@ -379,3 +384,7 @@ if __name__ == "__main__":
 
     # print(is_trading_day("2026-01-16"))  # Example usage
     # print(is_trading_day("2026-01-17"))  # Example usage
+
+    df = fetch_SP500_index_data_yf(start_year=1975, end_year=2024)
+    print(df.head())
+    print(df.tail())
