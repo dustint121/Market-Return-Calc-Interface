@@ -1,6 +1,7 @@
 /test_code
 /data
 /treemaps
+/treemap_metadata
 test.py
 /.venv
 __pycache__/

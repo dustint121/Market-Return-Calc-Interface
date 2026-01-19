@@ -5,6 +5,7 @@ import pandas_market_calendars as mcal
 import os
 import yfinance as yf
 import requests 
+import json
 import bs4
 import plotly.express as px
 from io import StringIO
@@ -104,10 +105,10 @@ def get_current_sp500_companies(current_date=None, save_to_csv=False):
     return df
 
 
-
+#NOTE: market cap is of current date at time of running code, will not reflect historical market cap
 def get_market_data_of_sp500(current_date="2025-12-31", use_S3=False):
     df = None
-    if current_date < "2026-02-01":
+    if current_date < "2026-02-01" and current_date >= "2025-12-23":
         df = pd.read_csv("sp500_companies_eoy2025.csv")
     else:
         df = get_current_sp500_companies()
@@ -125,9 +126,34 @@ def get_market_data_of_sp500(current_date="2025-12-31", use_S3=False):
     total_market_cap = 0
     for ticker_symbol in list_of_tickers:
         try:
+            # if index < 299 or index > 300: # for debugging "MMC"
+            #     index += 1
+            #     continue
+
             print(f"Processing {index+1}/{len(list_of_tickers)}: {ticker_symbol}")
-            ticker_info = tickers.tickers[ticker_symbol].info
+
+
+            # if ticker symbol is "MRSH" and current_date is before 2026-01-06,  switch to "MMC"
+                # ticker symbol change; no data under "MRSH" before 2026-01-06 
+            if ticker_symbol == "MRSH" and current_date < "2026-01-06":
+                ticker_symbol = "MMC"
+ 
+            # get ticker info
+            ticker_info = None
+            if ticker_symbol != "MMC":
+                ticker_info = tickers.tickers[ticker_symbol].info
+            else:
+                ticker_info = yf.Ticker(ticker_symbol).info
+            
             market_cap = ticker_info.get('marketCap')
+            # #adjust market cap based on price change if not using current date
+            if current_date != datetime.now().strftime('%Y-%m-%d'):
+                # print(f"Adjusting market cap for {ticker_symbol} based on price change...")
+                current_price = ticker_info.get('currentPrice')
+                price_history = yf.Ticker(ticker_symbol).history(start=current_date, period="2d")
+                old_price = price_history['Close'].iloc[0]
+                market_cap = market_cap * (old_price / current_price) if old_price != 0 else market_cap
+
             df.at[index, 'market_cap'] = market_cap
             total_market_cap += market_cap
 
@@ -263,7 +289,6 @@ def generate_sp500_treemap(current_date="2025-12-31", test_mode=False, use_indus
 
     # use yfinance to get overall % change of S&P 500 for root level
     sp500 = yf.Ticker("^GSPC")
-    # sp500_history = sp500.history(period="2d")
     sp500_history = sp500.history(start=previous_trading_day, period="10d")
     sp500_percent_change = None
     if not sp500_history.empty:
@@ -339,7 +364,14 @@ def generate_sp500_treemap(current_date="2025-12-31", test_mode=False, use_indus
     os.makedirs("treemaps", exist_ok=True)
     fig.write_html(f"treemaps/{current_date}_treemap.html")
 
-
+    #store sp500_percent_change and total_market_cap_str to json
+    os.makedirs("treemap_metadata", exist_ok=True)
+    with open(f"treemap_metadata/{current_date}.json", "w") as json_file:
+        json.dump({
+            "date": current_date,
+            "sp500_percent_change": sp500_percent_change,
+            "total_market_cap": total_market_cap_str
+        }, json_file)
 
 
 
@@ -353,22 +385,20 @@ def generate_sp500_treemap(current_date="2025-12-31", test_mode=False, use_indus
 
 
 if __name__ == "__main__":
-    #get last trade date
-    # sp500 = yf.Ticker("^GSPC")
-    # sp500_history = sp500.history(period="2d")
+
 
 
     #use mcal to get trading days between 2026-01-01 to 2026-01-17 in yyyy-mm-dd format
     nyse = mcal.get_calendar('NYSE')
-    schedule = nyse.schedule(start_date='2026-01-01', end_date='2026-01-17')
+    schedule = nyse.schedule(start_date='2026-01-03', end_date='2026-01-17')
     trading_days = mcal.date_range(schedule, frequency='1D').strftime('%Y-%m-%d').tolist()
 
-    # for current_date in trading_days:
-    #     print(f"Generating treemap for {current_date}...")
-    #     # generate market data
-    #     get_market_data_of_sp500(current_date)
-    #     # generate treemap
-    #     generate_sp500_treemap(current_date)
+    for current_date in trading_days:
+        print(f"Generating treemap for {current_date}...")
+        # generate market data
+        get_market_data_of_sp500(current_date)
+        # generate treemap
+        generate_sp500_treemap(current_date)
 
     # For testing, generate for a single date
     # generate_sp500_treemap("2026-01-02", test_mode=False)
@@ -377,14 +407,6 @@ if __name__ == "__main__":
     # get_current_sp500_companies(current_date="2025-12-20", save_to_csv=True)
     # get_current_sp500_companies(save_to_csv=True)
 
-    #get current date in yyyy-mm-dd
-    # from datetime import datetime
-    # current_date = datetime.now().strftime('%Y-%m-%d')
-
 
     # print(is_trading_day("2026-01-16"))  # Example usage
     # print(is_trading_day("2026-01-17"))  # Example usage
-
-    df = fetch_SP500_index_data_yf(start_year=1975, end_year=2024)
-    print(df.head())
-    print(df.tail())
