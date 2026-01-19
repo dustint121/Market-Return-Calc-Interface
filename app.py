@@ -24,16 +24,13 @@ def api_returns():
     start_year = int(data["start_year"])
     end_year = int(data["end_year"])
     contribution = float(data["contribution"])
-    interval = data["interval"]          # 'weekly', 'monthly', 'quarterly', 'biannual', 'annually', 'custom'
+    interval = data["interval"]
     custom_days = int(data.get("custom_days") or 0)
 
-    # fetch daily SP500 data once for the whole period
     df = fetch_SP500_index_data_yf(start_year=start_year, end_year=end_year)
-    # df has columns Date (yyyy-mm-dd string) and Close (float)
     df["Date"] = pd.to_datetime(df["Date"])
     df = df.sort_values("Date")
 
-    # choose step in days based on interval
     if interval == "weekly":
         step = 7
     elif interval == "monthly":
@@ -49,34 +46,52 @@ def api_returns():
     else:
         return jsonify({"error": "Invalid interval"}), 400
 
-    # build investing schedule from first to last trading day
     first_date = df["Date"].min()
     last_date = df["Date"].max()
     current = first_date
 
     total_invested = 0.0
     shares_owned = 0.0
+    intervals = []  # store each contribution
 
     while current <= last_date:
-        # pick the closest trading day on or after current
         sub = df[df["Date"] >= current]
         if sub.empty:
             break
-        price = sub.iloc[0]["Close"]
-        shares_owned += contribution / price
+        row = sub.iloc[0]
+        price = float(row["Close"])
+        date = row["Date"]
+
+        shares = contribution / price
+        shares_owned += shares
         total_invested += contribution
+
+        intervals.append({
+            "date": date.strftime("%Y-%m-%d"),
+            "buy_price": round(price, 2),
+            "contribution": round(contribution, 2),
+            "shares": round(shares, 6),  # keep some precision
+        })
+
         current = current + pd.Timedelta(days=step)
 
-    final_price = df.iloc[-1]["Close"]
+    final_price = float(df.iloc[-1]["Close"])
     final_value = shares_owned * final_price
     total_return = final_value - total_invested
     total_return_pct = (total_return / total_invested * 100) if total_invested > 0 else 0.0
+
+    # compute per-interval final value and profit
+    for it in intervals:
+        it["final_value"] = round(it["shares"] * final_price, 2)
+        it["profit"] = round(it["final_value"] - it["contribution"], 2)
 
     return jsonify({
         "total_invested": round(total_invested, 2),
         "final_value": round(final_value, 2),
         "total_return": round(total_return, 2),
         "total_return_pct": round(total_return_pct, 2),
+        "final_price": round(final_price, 2),
+        "intervals": intervals,  # NEW
     })
 
 # ---------- PAGE 2: Treemaps List ----------

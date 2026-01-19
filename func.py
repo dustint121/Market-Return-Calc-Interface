@@ -414,27 +414,56 @@ if __name__ == "__main__":
     #     generate_sp500_treemap(current_date)
 
 
-    # print(read_all_treemap_metadata())
-    # sys.exit(0)
+
+
+
 
     # get argument from command line for date
-    if len(sys.argv) > 1:
-        date_arg = sys.argv[1]
-        #check date_arg format is valid: yyyy-mm-dd
-        try:
-            is_valid_date = bool(datetime.strptime(date_arg, '%Y-%m-%d'))
-            # check if trading day
-            if is_valid_date and is_trading_day(date_arg):
-                # check if date_arg is pass the current date
-                if date_arg > datetime.now().strftime('%Y-%m-%d'):
-                    print(f"{date_arg} is in the future. Please provide a valid trading day.")
-                    sys.exit(1)
-                get_market_data_of_sp500(date_arg)
-                generate_sp500_treemap(date_arg)
+    # if len(sys.argv) > 1:
+    #     date_arg = sys.argv[1]
+    #     #check date_arg format is valid: yyyy-mm-dd
+    #     try:
+    #         is_valid_date = bool(datetime.strptime(date_arg, '%Y-%m-%d'))
+    #         # check if trading day
+    #         if is_valid_date and is_trading_day(date_arg):
+    #             # check if date_arg is pass the current date
+    #             if date_arg > datetime.now().strftime('%Y-%m-%d'):
+    #                 print(f"{date_arg} is in the future. Please provide a valid trading day.")
+    #                 sys.exit(1)
+    #             get_market_data_of_sp500(date_arg)
+    #             generate_sp500_treemap(date_arg)
 
-            else:
-                print(f"{date_arg} is not a trading day.")
-                sys.exit(1)
-        except ValueError:
-            print(f"Invalid date format: {date_arg}. Use yyyy-mm-dd format.")
-            sys.exit(1)
+    #         else:
+    #             print(f"{date_arg} is not a trading day.")
+    #             sys.exit(1)
+    #     except ValueError:
+    #         print(f"Invalid date format: {date_arg}. Use yyyy-mm-dd format.")
+    #         sys.exit(1)
+
+    # use fetch_sp500_index_data_yf to get Sp500 index data and graph it using matplotlib
+    # df = fetch_SP500_index_data_yf(start_year=1975, end_year=2024)
+
+    # import matplotlib.pyplot as plt
+    # plt.figure(figsize=(12, 6))
+    # plt.plot(df['Date'], df['Close'], marker='o', markersize=2, linestyle='-')
+    # plt.title('S&P 500 Index (2020-2024)')
+    # plt.xlabel('Date')
+    # plt.ylabel('Index Value')
+    # plt.xticks(rotation=45)
+    # # for y-ticks, only have year values
+    # years = pd.to_datetime(df['Date']).dt.year.unique()
+    # # plt.yticks(np.arange(int(df['Close'].min()), int(df['Close'].max())+1, 20))
+    # plt.grid()
+    # plt.tight_layout()
+    # plt.show()
+
+    # use plotly to graph S&P 500 index data
+    # import plotly.express as px
+    start_year, end_year = 1975, 2024
+    df = fetch_SP500_index_data_yf(start_year=start_year, end_year=end_year)
+
+    fig = px.line(df, x='Date', y='Close', title=f'S&P 500 Index ({start_year}-{end_year})', markers=True)
+    fig.update_traces(marker=dict(size=4))
+    fig.update_layout(xaxis_title='Date', yaxis_title='Index Value')
+    fig.update_xaxes(tickangle=45)
+    fig.show()
