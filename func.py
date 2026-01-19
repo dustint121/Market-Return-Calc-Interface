@@ -440,30 +440,4 @@ if __name__ == "__main__":
     #         print(f"Invalid date format: {date_arg}. Use yyyy-mm-dd format.")
     #         sys.exit(1)
 
-    # use fetch_sp500_index_data_yf to get Sp500 index data and graph it using matplotlib
-    # df = fetch_SP500_index_data_yf(start_year=1975, end_year=2024)
-
-    # import matplotlib.pyplot as plt
-    # plt.figure(figsize=(12, 6))
-    # plt.plot(df['Date'], df['Close'], marker='o', markersize=2, linestyle='-')
-    # plt.title('S&P 500 Index (2020-2024)')
-    # plt.xlabel('Date')
-    # plt.ylabel('Index Value')
-    # plt.xticks(rotation=45)
-    # # for y-ticks, only have year values
-    # years = pd.to_datetime(df['Date']).dt.year.unique()
-    # # plt.yticks(np.arange(int(df['Close'].min()), int(df['Close'].max())+1, 20))
-    # plt.grid()
-    # plt.tight_layout()
-    # plt.show()
-
-    # use plotly to graph S&P 500 index data
-    # import plotly.express as px
-    start_year, end_year = 1975, 2024
-    df = fetch_SP500_index_data_yf(start_year=start_year, end_year=end_year)
-
-    fig = px.line(df, x='Date', y='Close', title=f'S&P 500 Index ({start_year}-{end_year})', markers=True)
-    fig.update_traces(marker=dict(size=4))
-    fig.update_layout(xaxis_title='Date', yaxis_title='Index Value')
-    fig.update_xaxes(tickangle=45)
-    fig.show()
+    x = 1

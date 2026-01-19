@@ -5,3 +5,4 @@
 test.py
 /.venv
 __pycache__/
+sp500_chart_to_display.html

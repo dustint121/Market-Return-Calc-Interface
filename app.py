@@ -3,9 +3,12 @@ from datetime import datetime
 import os
 import math
 import pandas as pd
-
+import plotly.express as px 
 from func import fetch_SP500_index_data_yf, read_all_treemap_metadata  
 app = Flask(__name__)
+
+GRAPH_DIR = os.path.join(os.path.dirname(__file__), "")
+os.makedirs(GRAPH_DIR, exist_ok=True)
 
 # ---------- PAGE 1: S&P 500 returns ----------
 
@@ -93,6 +96,42 @@ def api_returns():
         "final_price": round(final_price, 2),
         "intervals": intervals,  # NEW
     })
+
+
+@app.route("/api/sp500_chart", methods=["POST"])
+def api_sp500_chart():
+    data = request.get_json()
+    start_year = int(data["start_year"])
+    end_year = int(data["end_year"])
+
+    df = fetch_SP500_index_data_yf(start_year=start_year, end_year=end_year)
+
+    fig = px.line(
+        df,
+        x="Date",
+        y="Close",
+        title=f"S&P 500 Index ({start_year}-{end_year})",
+        markers=True,
+    )
+    fig.update_traces(marker=dict(size=4))
+    fig.update_layout(xaxis_title="Date", yaxis_title="Index Value")
+    fig.update_xaxes(tickangle=45)
+    fig.update_traces(
+        hovertemplate="Date: %{x}<br>Index Value: %{y:.2f}<extra></extra>"
+    )
+
+    filename = "sp500_chart_to_display.html"  # or any name you like
+    filepath = os.path.join(GRAPH_DIR, filename)
+    fig.write_html(filepath)
+
+    return jsonify({"chart_url": f"/graphs/{filename}"})
+
+
+
+@app.route("/graphs/<path:filename>")
+def serve_graph(filename):
+    return send_from_directory(GRAPH_DIR, filename) 
+
 
 # ---------- PAGE 2: Treemaps List ----------
 

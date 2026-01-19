@@ -2,7 +2,7 @@
 
 {% block content %}
 <div class="box">
-  <h2>SP500 Returns Calculator (1975–2025)</h2>
+  <h2>S&P 500 Returns Calculator (1975-2025)</h2>
 
   <form id="returns-form">
     <div style="margin-bottom: 16px;">
@@ -15,6 +15,12 @@
       <label>End year: <span id="end-year-label">{{ end_year }}</span></label><br>
       <input type="range" id="end-year" name="end_year"
              min="{{ start_year }}" max="{{ end_year }}" value="{{ end_year }}">
+    </div>
+
+    <div style="margin-top: 8px; margin-bottom: 16px;">
+      <button type="button" id="view-graph-btn" class="pill-button">
+        View Graph
+      </button>
     </div>
 
     <div style="margin-bottom: 16px;">
@@ -77,6 +83,26 @@
 
   <div id="error" style="margin-top: 12px; color: red;"></div>
 </div>
+
+<!-- Graph modal -->
+<div id="graph-modal"
+     style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:50; align-items:center; justify-content:center;">
+  <div style="background:#ffffff; border-radius:8px; max-width:900px; width:95%; max-height:90vh; display:flex; flex-direction:column;">
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px; border-bottom:1px solid #e5e7eb;">
+      <span style="font-weight:600; font-size:14px;">S&P 500 Index Chart</span>
+      <button type="button" id="close-graph-btn"
+              style="border:none; background:transparent; cursor:pointer; font-size:18px; line-height:1;">
+        ×
+      </button>
+    </div>
+    <div style="flex:1; padding:8px 12px;">
+      <iframe id="graph-iframe"
+              src=""
+              style="width:100%; height:70vh; border:none;"></iframe>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -181,5 +207,55 @@ document.getElementById('returns-form').addEventListener('submit', async (e) => 
     errorEl.textContent = 'Unexpected error: ' + err.message;
   }
 });
+
+
+  const viewGraphBtn = document.getElementById('view-graph-btn');
+  const graphModal = document.getElementById('graph-modal');
+  const graphIframe = document.getElementById('graph-iframe');
+  const closeGraphBtn = document.getElementById('close-graph-btn');
+
+  if (viewGraphBtn) {
+    viewGraphBtn.addEventListener('click', async () => {
+      const startYear = parseInt(startSlider.value);
+      const endYear = parseInt(endSlider.value);
+
+      try {
+        const resp = await fetch('/api/sp500_chart', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ start_year: startYear, end_year: endYear })
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.chart_url) {
+          alert('Error generating chart.');
+          return;
+        }
+        graphIframe.src = data.chart_url; 
+        graphModal.style.display = 'flex';
+      } catch (err) {
+        console.error(err);
+        alert('Unexpected error generating chart.');
+      }
+    });
+  }
+
+  if (closeGraphBtn) {
+    closeGraphBtn.addEventListener('click', () => {
+      graphModal.style.display = 'none';
+      graphIframe.src = ''; // optional: clear to stop any running JS
+    });
+  }
+
+  if (graphModal) {
+    graphModal.addEventListener('click', (e) => {
+      if (e.target === graphModal) {
+        graphModal.style.display = 'none';
+        graphIframe.src = '';
+      }
+    });
+  }
+
+
+
 </script>
 {% endblock %}
