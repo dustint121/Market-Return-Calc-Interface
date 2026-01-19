@@ -62,21 +62,54 @@
       gap: 8px;
     }
 
-    .treemap-tab {
-      padding: 6px 12px;
-      border-radius: 16px;
-      border: 1px solid #d1d5db;
-      text-decoration: none;
-      font-size: 13px;
-      background-color: #ffffff;
-      color: #374151;
-    }
+  .treemap-tab {
+    position: relative;
+    padding: 6px 12px;
+    border-radius: 16px;
+    border: 1px solid #d1d5db;
+    text-decoration: none;
+    font-size: 13px;
+    background-color: #ffffff;
+    color: #374151;
+  }
 
-    .treemap-tab:hover {
-      background-color: #e5f0ff;
-      border-color: #1a73e8;
-    }  
-  
+  .treemap-tab:hover {
+    background-color: #e5f0ff;
+    border-color: #1a73e8;
+  }
+
+  .treemap-tab[data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 125%;
+    white-space: nowrap;
+    background: #111827; /* default / neutral */
+    color: #f9fafb;
+    padding: 6px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+    z-index: 20;
+  }
+
+  .treemap-tab[data-tooltip]:hover::after {
+    opacity: 1;
+  }
+
+  /* green tooltip for positive SP500 change */
+  .treemap-tab[data-tooltip-color="green"]::after {
+    background: #16a34a; /* light-ish green */
+  }
+
+  /* red tooltip for negative SP500 change */
+  .treemap-tab[data-tooltip-color="red"]::after {
+    background: #dc2626; /* red */
+  }
+
   
   </style>
   {% block head %}{% endblock %}

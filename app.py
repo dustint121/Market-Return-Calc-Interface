@@ -4,13 +4,12 @@ import os
 import math
 import pandas as pd
 
-from func import fetch_SP500_index_data_yf
-
+from func import fetch_SP500_index_data_yf, read_all_treemap_metadata  
 app = Flask(__name__)
 
 # ---------- PAGE 1: S&P 500 returns ----------
 
-@app.route("/", methods=["GET"])
+@app.route("/", methods=["GET"]) #if commented out: it gives 404 error, but /page1 still works
 @app.route("/page1", methods=["GET"])
 def page1():
     start_year = 1975
@@ -92,7 +91,16 @@ def page2():
             if name.endswith("_treemap.html"):
                 files.append(name)
         files.sort(reverse=True)  # latest first
-    return render_template("page2.html", files=files)
+
+    # Build metadata lookup: date -> {sp500_percent_change, total_market_cap}
+    meta_df = read_all_treemap_metadata()
+    meta_by_date = {}
+    for _, row in meta_df.iterrows():
+        meta_by_date[row["date"]] = {
+            "sp500_percent_change": row["sp500_percent_change"],
+            "total_market_cap": row["total_market_cap"],
+        }
+    return render_template("page2.html", files=files, meta_by_date=meta_by_date)
 
 @app.route("/treemaps/<path:filename>")
 def treemap_file(filename):

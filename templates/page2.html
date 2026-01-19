@@ -47,9 +47,42 @@
                   {# Reverse within each month to show latest date first #}
                   {% for name in grouped[year][month]|reverse %}
                     {% set date_str = name.replace('_treemap.html', '') %}
+                    {% set meta = meta_by_date.get(date_str) %}
+                    {% if meta %}
+                      {# signed percent: [+/-][value]% with 2 decimals #}
+                      {% set pct = meta.sp500_percent_change|float %}
+                      {% if pct > 0 %}
+                        {% set sign = '+' %}
+                      {% elif pct < 0 %}
+                        {% set sign = '-' %}
+                      {% else %}
+                        {% set sign = '' %}
+                      {% endif %}
+                      {% set pct_abs_str = '%.2f' % (pct|abs) %}
+                      {% set pct_display = sign ~ pct_abs_str ~ '%' %}
+
+                      {# tooltip text, single line #}
+                      {% set tooltip = "S&P 500 % change: " ~ pct_display
+                        ~ " | Total market cap: " ~ meta.total_market_cap %}
+
+                      {# color based on sign #}
+                      {% if pct > 0 %}
+                        {% set tooltip_color = 'green' %}
+                      {% elif pct < 0 %}
+                        {% set tooltip_color = 'red' %}
+                      {% else %}
+                        {% set tooltip_color = 'neutral' %}
+                      {% endif %}
+                    {% else %}
+                      {% set tooltip = "Date: " ~ date_str ~ " | No metadata available." %}
+                      {% set tooltip_color = 'neutral' %}
+                    {% endif %}
+
                     <a href="{{ url_for('treemap_file', filename=name) }}"
-                       target="_blank"
-                       class="treemap-tab">
+                      target="_blank"
+                      class="treemap-tab"
+                      data-tooltip="{{ tooltip }}"
+                      data-tooltip-color="{{ tooltip_color }}">
                       {{ date_str }}
                     </a>
                   {% endfor %}

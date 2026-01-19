@@ -9,6 +9,7 @@ import json
 import bs4
 import plotly.express as px
 from io import StringIO
+import sys
 
 # Function to check if date is a trading day
 def is_trading_day(date_str):
@@ -187,7 +188,7 @@ def get_market_data_of_sp500(current_date="2025-12-31", use_S3=False):
 
 
 
-def generate_sp500_treemap(current_date="2025-12-31", test_mode=False, use_industry=False,use_S3=False):
+def generate_sp500_treemap(current_date="2025-12-31", test_mode=False, use_industry=False, use_S3=False):
     df = None
     if test_mode:
         df = pd.read_csv("sp500_companies_market_cap_eoy2025.csv")
@@ -376,7 +377,19 @@ def generate_sp500_treemap(current_date="2025-12-31", test_mode=False, use_indus
 
 
 
-
+def read_all_treemap_metadata():
+    metadata = []
+    for json_file in os.listdir("treemap_metadata"):
+        if json_file.endswith(".json"):
+            with open(f"treemap_metadata/{json_file}", "r") as f:
+                data = json.load(f)
+                metadata.append(data)
+    metadata_df = pd.DataFrame(metadata)
+    metadata_df = metadata_df.sort_values(by="date", ascending=True).reset_index(drop=True)
+    metadata_df['sp500_percent_change'] = metadata_df['sp500_percent_change'].round(2)
+    # covert sp500_percent_change to string with + or - sign and % symbol
+    # metadata_df['sp500_percent_change'] = metadata_df['sp500_percent_change'].apply(lambda x: f"+{x:.2f}%" if x >= 0 else f"{x:.2f}%")
+    return metadata_df
 
 
 
@@ -389,24 +402,39 @@ if __name__ == "__main__":
 
 
     #use mcal to get trading days between 2026-01-01 to 2026-01-17 in yyyy-mm-dd format
-    nyse = mcal.get_calendar('NYSE')
-    schedule = nyse.schedule(start_date='2026-01-03', end_date='2026-01-17')
-    trading_days = mcal.date_range(schedule, frequency='1D').strftime('%Y-%m-%d').tolist()
+    # nyse = mcal.get_calendar('NYSE')
+    # schedule = nyse.schedule(start_date='2026-01-01', end_date='2026-01-17')
+    # trading_days = mcal.date_range(schedule, frequency='1D').strftime('%Y-%m-%d').tolist()
 
-    for current_date in trading_days:
-        print(f"Generating treemap for {current_date}...")
-        # generate market data
-        get_market_data_of_sp500(current_date)
-        # generate treemap
-        generate_sp500_treemap(current_date)
-
-    # For testing, generate for a single date
-    # generate_sp500_treemap("2026-01-02", test_mode=False)
+    # for current_date in trading_days:
+    #     print(f"Generating treemap for {current_date}...")
+    #     # generate market data
+    #     get_market_data_of_sp500(current_date)
+    #     # generate treemap
+    #     generate_sp500_treemap(current_date)
 
 
-    # get_current_sp500_companies(current_date="2025-12-20", save_to_csv=True)
-    # get_current_sp500_companies(save_to_csv=True)
+    # print(read_all_treemap_metadata())
+    # sys.exit(0)
 
+    # get argument from command line for date
+    if len(sys.argv) > 1:
+        date_arg = sys.argv[1]
+        #check date_arg format is valid: yyyy-mm-dd
+        try:
+            is_valid_date = bool(datetime.strptime(date_arg, '%Y-%m-%d'))
+            # check if trading day
+            if is_valid_date and is_trading_day(date_arg):
+                # check if date_arg is pass the current date
+                if date_arg > datetime.now().strftime('%Y-%m-%d'):
+                    print(f"{date_arg} is in the future. Please provide a valid trading day.")
+                    sys.exit(1)
+                get_market_data_of_sp500(date_arg)
+                generate_sp500_treemap(date_arg)
 
-    # print(is_trading_day("2026-01-16"))  # Example usage
-    # print(is_trading_day("2026-01-17"))  # Example usage
+            else:
+                print(f"{date_arg} is not a trading day.")
+                sys.exit(1)
+        except ValueError:
+            print(f"Invalid date format: {date_arg}. Use yyyy-mm-dd format.")
+            sys.exit(1)
