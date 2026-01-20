@@ -4,6 +4,7 @@
 /treemap_metadata
 test.py
 /.venv
+/status_logs
 __pycache__/
 sp500_chart_to_display.html
 .env

@@ -3,6 +3,19 @@
 {% block content %}
 <div class="box">
   <h2>SP500 Treemap Snapshots</h2>
+
+  <div style="margin-bottom: 16px; display:flex; align-items:center; gap:12px;">
+    <span style="font-size: 13px; color:#4b5563;">Data source:</span>
+    <label class="switch">
+      <input type="checkbox" id="data-source-toggle"
+            {% if data_source == 's3' %}checked{% endif %}>
+      <span class="slider round"></span>
+    </label>
+    <span id="data-source-label" style="font-size: 13px; color:#111827;">
+      {% if data_source == 's3' %}AWS S3{% else %}Local (Limited Number of Files on OS){% endif %}
+    </span>
+  </div>
+
   {% if files %}
 
     {# Group files into year -> month -> [filenames] #}
@@ -78,13 +91,26 @@
                       {% set tooltip_color = 'neutral' %}
                     {% endif %}
 
-                    <a href="{{ url_for('treemap_file', filename=name) }}"
-                      target="_blank"
-                      class="treemap-tab"
-                      data-tooltip="{{ tooltip }}"
-                      data-tooltip-color="{{ tooltip_color }}">
-                      {{ date_str }}
-                    </a>
+                    {% if data_source == 's3' %}
+                      {# Build direct S3 object URL #}
+                      {% set s3_url = "https://" ~ aws_bucket ~ ".s3." ~ aws_region ~ ".amazonaws.com/treemaps/" ~ name %}
+                      <a href="{{ s3_url }}"
+                        target="_blank"
+                        class="treemap-tab"
+                        data-tooltip="{{ tooltip }}"
+                        data-tooltip-color="{{ tooltip_color }}">
+                        {{ date_str }}
+                      </a>
+                    {% else %}
+                      <a href="{{ url_for('treemap_file', filename=name) }}"
+                        target="_blank"
+                        class="treemap-tab"
+                        data-tooltip="{{ tooltip }}"
+                        data-tooltip-color="{{ tooltip_color }}">
+                        {{ date_str }}
+                      </a>
+                    {% endif %}
+                    
                   {% endfor %}
                 </div>
               </details>
@@ -98,4 +124,36 @@
     <p>No treemap files found in the treemaps folder.</p>
   {% endif %}
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const toggle = document.getElementById('data-source-toggle');
+  const label = document.getElementById('data-source-label');
+
+  if (toggle) {
+    toggle.addEventListener('change', async () => {
+      const source = toggle.checked ? 's3' : 'local';
+      label.textContent = source === 's3' ? 'AWS S3' : 'Local';
+      try {
+        const resp = await fetch('/api/set_data_source', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ source })
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) {
+          alert('Failed to change data source');
+          return;
+        }
+        // reload to refresh treemaps + metadata from new source
+        window.location.reload();
+      } catch (err) {
+        console.error(err);
+        alert('Unexpected error changing data source');
+      }
+    });
+  }
+</script>
+
 {% endblock %}

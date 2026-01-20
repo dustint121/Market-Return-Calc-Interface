@@ -5,12 +5,22 @@ import math
 import pandas as pd
 import plotly.express as px 
 from func import fetch_SP500_index_data_yf, read_all_treemap_metadata  
+import boto3
+from dotenv import load_dotenv
+
+load_dotenv()
 app = Flask(__name__)
 
+
+
+# DATA_SOURCE = "local"  # or "s3" 
+DATA_SOURCE = "s3"
+
+
+# ---------- PAGE 1: S&P 500 returns ----------
 GRAPH_DIR = os.path.join(os.path.dirname(__file__), "")
 os.makedirs(GRAPH_DIR, exist_ok=True)
 
-# ---------- PAGE 1: S&P 500 returns ----------
 
 @app.route("/", methods=["GET"]) #if commented out: it gives 404 error, but /page1 still works
 @app.route("/page1", methods=["GET"])
@@ -136,30 +146,72 @@ def serve_graph(filename):
 # ---------- PAGE 2: Treemaps List ----------
 
 TREEMAP_DIR = os.path.join(os.path.dirname(__file__), "treemaps")
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+AWS_S3_BUCKET_NAME = os.getenv("AWS_S3_BUCKET_NAME")
+AWS_REGION_NAME = os.getenv("AWS_REGION_NAME", "us-west-1")
+s3_client = boto3.client('s3', aws_access_key_id=AWS_ACCESS_KEY_ID, aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
+
 
 @app.route("/page2", methods=["GET"])
 def page2():
-    files = []
-    if os.path.isdir(TREEMAP_DIR):
-        for name in os.listdir(TREEMAP_DIR):
-            if name.endswith("_treemap.html"):
-                files.append(name)
-        files.sort(reverse=True)  # latest first
+    use_s3 = (DATA_SOURCE == "s3")
 
-    # Build metadata lookup: date -> {sp500_percent_change, total_market_cap}
-    meta_df = read_all_treemap_metadata()
+    files = []
+    if use_s3:
+        resp = s3_client.list_objects_v2(Bucket=AWS_S3_BUCKET_NAME, Prefix="treemaps/")
+        if "Contents" in resp:
+            for obj in resp["Contents"]:
+                key = obj["Key"]
+                if key.endswith("_treemap.html"):
+                    files.append(os.path.basename(key))
+    else:
+        if os.path.isdir(TREEMAP_DIR):
+            for name in os.listdir(TREEMAP_DIR):
+                if name.endswith("_treemap.html"):
+                    files.append(name)
+
+    files.sort(reverse=True)
+
+    meta_df = read_all_treemap_metadata(use_S3=use_s3)
     meta_by_date = {}
     for _, row in meta_df.iterrows():
         meta_by_date[row["date"]] = {
             "sp500_percent_change": row["sp500_percent_change"],
             "total_market_cap": row["total_market_cap"],
         }
-    return render_template("page2.html", files=files, meta_by_date=meta_by_date)
+
+    return render_template(
+        "page2.html",
+        files=files,
+        meta_by_date=meta_by_date,
+        data_source=DATA_SOURCE,
+        aws_bucket=AWS_S3_BUCKET_NAME,
+        aws_region=AWS_REGION_NAME,
+    )
 
 @app.route("/treemaps/<path:filename>")
 def treemap_file(filename):
-    # serves the treemap HTML files
-    return send_from_directory(TREEMAP_DIR, filename)
+    if DATA_SOURCE == "s3":
+        # proxy file from S3
+        key = f"treemaps/{filename}"
+        obj = s3_client.get_object(Bucket=AWS_S3_BUCKET_NAME, Key=key)
+        # stream raw HTML
+        return obj["Body"].read(), 200, {"Content-Type": "text/html"}
+    else:
+        return send_from_directory(TREEMAP_DIR, filename)
+
+@app.route("/api/set_data_source", methods=["POST"])
+def set_data_source():
+    global DATA_SOURCE
+    data = request.get_json()
+    source = data.get("source", "local")
+    if source not in ("local", "s3"):
+        return jsonify({"error": "Invalid source"}), 400
+    DATA_SOURCE = source
+    return jsonify({"ok": True, "source": DATA_SOURCE})
+
+
 
 # ---------- PAGE 3: Blank for now ----------
 

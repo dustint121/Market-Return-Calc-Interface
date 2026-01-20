@@ -21,11 +21,11 @@ AWS_S3_BUCKET_NAME = os.getenv("AWS_S3_BUCKET_NAME")
 
 
 # Function to check if date is a trading day
-def is_trading_day(date_str):
-    nyse = mcal.get_calendar('NYSE')
-    schedule = nyse.schedule(start_date=date_str, end_date=date_str)
-    return not schedule.empty
-
+    #date_str format: 'yyyy-mm-dd'
+def is_trading_day(date_str): 
+    exchange_calendar = mcal.get_calendar('NYSE')
+    valid_days = exchange_calendar.valid_days(start_date=date_str, end_date=date_str)
+    return date_str in valid_days.strftime('%Y-%m-%d').tolist()
 
 
 # Function to fetch S&P 500 index values using yfinance
@@ -196,7 +196,12 @@ def get_market_data_of_sp500(current_date="2025-12-31", use_S3=False):
         s3_client = boto3.client('s3', aws_access_key_id=AWS_ACCESS_KEY_ID, aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
         csv_buffer = StringIO()
         df.to_csv(csv_buffer, index=False)
-        s3_client.put_object(Bucket=AWS_S3_BUCKET_NAME, Key=f"data/{current_date}.csv", Body=csv_buffer.getvalue())
+        s3_client.put_object(
+                                Bucket=AWS_S3_BUCKET_NAME,
+                                Key=f"data/{current_date}.csv",
+                                Body=csv_buffer.getvalue(),
+                                ContentType="text/csv"
+                            )
     else:
     # write to csv
         os.makedirs("data", exist_ok=True)
@@ -385,14 +390,17 @@ def generate_sp500_treemap(current_date="2025-12-31", test_mode=False, use_indus
 
     # fig.show()
     # save to html
-
     if use_S3:
         # write to S3
         s3_client = boto3.client('s3', aws_access_key_id=AWS_ACCESS_KEY_ID, aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
         html_buffer = StringIO()
         fig.write_html(html_buffer)
-        s3_client.put_object(Bucket=AWS_S3_BUCKET_NAME, Key=f"treemaps/{current_date}_treemap.html", Body=html_buffer.getvalue())
-
+        s3_client.put_object(
+                                Bucket=AWS_S3_BUCKET_NAME,
+                                Key=f"treemaps/{current_date}_treemap.html",
+                                Body=html_buffer.getvalue(),
+                                ContentType="text/html"
+                            )
         # store sp500_percent_change and total_market_cap_str to json
         metadata_buffer = StringIO()
         json.dump({
@@ -400,7 +408,12 @@ def generate_sp500_treemap(current_date="2025-12-31", test_mode=False, use_indus
             "sp500_percent_change": sp500_percent_change,
             "total_market_cap": total_market_cap_str
         }, metadata_buffer)
-        s3_client.put_object(Bucket=AWS_S3_BUCKET_NAME, Key=f"treemap_metadata/{current_date}.json", Body=metadata_buffer.getvalue())
+        s3_client.put_object(
+                                Bucket=AWS_S3_BUCKET_NAME,
+                                Key=f"treemap_metadata/{current_date}.json",
+                                Body=metadata_buffer.getvalue(),
+                                ContentType="application/json"
+                            )
     else:
         os.makedirs("treemaps", exist_ok=True)
         fig.write_html(f"treemaps/{current_date}_treemap.html")
@@ -439,8 +452,6 @@ def read_all_treemap_metadata(use_S3=False):
     metadata_df = pd.DataFrame(metadata)
     metadata_df = metadata_df.sort_values(by="date", ascending=True).reset_index(drop=True)
     metadata_df['sp500_percent_change'] = metadata_df['sp500_percent_change'].round(2)
-    # covert sp500_percent_change to string with + or - sign and % symbol
-    # metadata_df['sp500_percent_change'] = metadata_df['sp500_percent_change'].apply(lambda x: f"+{x:.2f}%" if x >= 0 else f"{x:.2f}%")
     return metadata_df
 
 
@@ -450,13 +461,10 @@ def read_all_treemap_metadata(use_S3=False):
 
 
 if __name__ == "__main__":
-
-
-
     #use mcal to get trading days between 2026-01-01 to 2026-01-17 in yyyy-mm-dd format
-    nyse = mcal.get_calendar('NYSE')
-    schedule = nyse.schedule(start_date='2026-01-01', end_date='2026-01-03')
-    trading_days = mcal.date_range(schedule, frequency='1D').strftime('%Y-%m-%d').tolist()
+    # nyse = mcal.get_calendar('NYSE')
+    # schedule = nyse.schedule(start_date='2026-01-01', end_date='2026-01-03')
+    # trading_days = mcal.date_range(schedule, frequency='1D').strftime('%Y-%m-%d').tolist()
 
     # for current_date in trading_days:
     #     print(f"Generating treemap for {current_date}...")
@@ -470,30 +478,60 @@ if __name__ == "__main__":
 
 
 
-
-
-
-
     # get argument from command line for date
-    # if len(sys.argv) > 1:
-    #     date_arg = sys.argv[1]
-    #     #check date_arg format is valid: yyyy-mm-dd
-    #     try:
-    #         is_valid_date = bool(datetime.strptime(date_arg, '%Y-%m-%d'))
-    #         # check if trading day
-    #         if is_valid_date and is_trading_day(date_arg):
-    #             # check if date_arg is pass the current date
-    #             if date_arg > datetime.now().strftime('%Y-%m-%d'):
-    #                 print(f"{date_arg} is in the future. Please provide a valid trading day.")
-    #                 sys.exit(1)
-    #             get_market_data_of_sp500(date_arg)
-    #             generate_sp500_treemap(date_arg)
+        # using s3 by default
+    if len(sys.argv) > 1:
+        date_arg = sys.argv[1]
+        use_S3_arg = True
+        if len(sys.argv) > 2:
+            if  sys.argv[2].lower() not in ['s3', 'local']:
+                print("Second argument must be 's3' or 'local'. Exiting.")
+                sys.exit(1)
+            use_S3_arg = sys.argv[2].lower() == 's3'
+            print(f"Using second argument. Using S3: {use_S3_arg}")
+        #check date_arg format is valid: yyyy-mm-dd
+        try:
+            is_valid_date = bool(datetime.strptime(date_arg, '%Y-%m-%d'))
+            # check if trading day
+            if is_valid_date and is_trading_day(date_arg):
+                # check if date_arg is pass the current date
+                if date_arg > datetime.now().strftime('%Y-%m-%d'):
+                    print(f"{date_arg} is in the future. Please provide a valid trading day.")
+                    status_str = f"Invalid date provided to script: {date_arg} is in the future."
+                    os.makedirs("status_logs", exist_ok=True)
+                    current_date_str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+                    with open(f"status_logs/{current_date_str}_future_not_exist.txt", "w") as f:
+                        f.write(status_str)
+                    sys.exit(1)
+                get_market_data_of_sp500(current_date=date_arg, use_S3=use_S3_arg)
+                generate_sp500_treemap(date_arg, use_S3=use_S3_arg)
 
-    #         else:
-    #             print(f"{date_arg} is not a trading day.")
-    #             sys.exit(1)
-    #     except ValueError:
-    #         print(f"Invalid date format: {date_arg}. Use yyyy-mm-dd format.")
-    #         sys.exit(1)
-
-    x = 1
+                status_str = f"Successfully generated treemap for {date_arg}." 
+                current_date_str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+                os.makedirs("status_logs", exist_ok=True)
+                # check if date_arg is current date
+                if date_arg == datetime.now().strftime('%Y-%m-%d'):
+                    with open(f"status_logs/{current_date_str}_success_current_date.txt", "w") as f:
+                        f.write(status_str)
+                else:
+                    with open(f"status_logs/{current_date_str}_success.txt", "w") as f:
+                        f.write(status_str)
+                sys.exit(1)
+            else:
+                print(f"{date_arg} is not a trading day.")
+                status_str = f"No issue with script: {date_arg} not a trading day."
+                os.makedirs("status_logs", exist_ok=True)
+                current_date_str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+                with open(f"status_logs/{current_date_str}_valid_nontrading_day.txt", "w") as f:
+                    f.write(status_str)
+                sys.exit(1)
+        except ValueError:
+            print(f"Invalid date format: {date_arg}. Use yyyy-mm-dd format.")
+            status_str = f"Invalid date format provided to script: {date_arg}. Use yyyy-mm-dd format."
+            os.makedirs("status_logs", exist_ok=True)
+            current_date_str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+            with open(f"status_logs/{current_date_str}_value_error.txt", "w") as f:
+                f.write(status_str)
+            sys.exit(1)
+    else:
+        print("Please provide a date argument in yyyy-mm-dd format.")
