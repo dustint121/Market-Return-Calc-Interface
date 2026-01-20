@@ -4,7 +4,8 @@ import os
 import math
 import pandas as pd
 import plotly.express as px 
-from func import fetch_SP500_index_data_yf, read_all_treemap_metadata  
+from func import (fetch_SP500_index_data_yf, read_all_treemap_metadata, is_market_open_now,
+                    get_time_until_next_market_open)
 import boto3
 from dotenv import load_dotenv
 
@@ -213,11 +214,28 @@ def set_data_source():
 
 
 
-# ---------- PAGE 3: Blank for now ----------
+# ---------- PAGE 3: Market Status ----------
 
 @app.route("/page3", methods=["GET"])
 def page3():
-    return render_template("page3.html")
+    open_now = is_market_open_now()
+    next_open_dt = None
+    days = hours = minutes = seconds = 0
+
+    if not open_now:
+        next_open, time_until, days, hours, minutes, seconds = get_time_until_next_market_open()
+        # next_open is a tz-aware Timestamp in America/New_York
+        next_open_dt = next_open.isoformat()  # for JS, keeps timezone
+
+    return render_template(
+        "page3.html",
+        market_open=open_now,
+        next_open_iso=next_open_dt,
+        rem_days=days,
+        rem_hours=hours,
+        rem_minutes=minutes,
+        rem_seconds=seconds,
+    )
 
 if __name__ == "__main__":
     #set host toallow for all IPs

@@ -27,6 +27,37 @@ def is_trading_day(date_str):
     valid_days = exchange_calendar.valid_days(start_date=date_str, end_date=date_str)
     return date_str in valid_days.strftime('%Y-%m-%d').tolist()
 
+def is_market_open_now():
+    nyse = mcal.get_calendar('NYSE')
+    current_time = pd.Timestamp.now(tz='America/New_York')
+    start_range = current_time - pd.Timedelta(days=6) # look back 6 days to ensure we cover weekends/holidays
+    end_range = current_time + pd.Timedelta(days=6) # look ahead 6 days
+    schedule = nyse.schedule(start_date=start_range, end_date=end_range, tz='America/New_York')
+
+    # Check if the current time falls within the open market hours in the schedule
+    is_open = nyse.open_at_time(schedule, current_time) 
+    return is_open
+
+def get_time_until_next_market_open():
+    nyse = mcal.get_calendar('NYSE')
+    start_date = pd.Timestamp.now(tz='America/New_York')
+    end_date = start_date + pd.Timedelta(days=7)
+    schedule = nyse.schedule(start_date=start_date, end_date=end_date, tz='America/New_York')
+    next_open = schedule.iloc[0]['market_open']
+    # check if next_open is in the past, if so get the next one
+    if next_open < start_date:
+        next_open = schedule.iloc[1]['market_open']
+    # print("Next market open:", next_open)
+    #time until next open
+    time_until_open = next_open - start_date
+    days = time_until_open.days
+    hours = time_until_open.seconds // 3600
+    minutes = (time_until_open.seconds % 3600) // 60
+    seconds = time_until_open.seconds % 60
+    # print("Time until next market open:", time_until_open)
+    # print(f"Which is: {days} days, {hours} hours, {minutes} minutes, {seconds} seconds")
+    return next_open, time_until_open, days, hours, minutes, seconds
+
 
 # Function to fetch S&P 500 index values using yfinance
 def fetch_SP500_index_data_yf(start_year=None, end_year=None):
