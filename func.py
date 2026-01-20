@@ -10,6 +10,15 @@ import bs4
 import plotly.express as px
 from io import StringIO
 import sys
+import boto3
+from dotenv import load_dotenv
+
+
+load_dotenv()
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+AWS_S3_BUCKET_NAME = os.getenv("AWS_S3_BUCKET_NAME")
+
 
 # Function to check if date is a trading day
 def is_trading_day(date_str):
@@ -181,10 +190,18 @@ def get_market_data_of_sp500(current_date="2025-12-31", use_S3=False):
     # print(f"Total Market Capitalization of S&P 500: {total_market_cap}")
     df['%_of_total_market_cap'] = df['market_cap'] / total_market_cap * 100
 
+
+    if use_S3:
+        # write to S3
+        s3_client = boto3.client('s3', aws_access_key_id=AWS_ACCESS_KEY_ID, aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
+        csv_buffer = StringIO()
+        df.to_csv(csv_buffer, index=False)
+        s3_client.put_object(Bucket=AWS_S3_BUCKET_NAME, Key=f"data/{current_date}.csv", Body=csv_buffer.getvalue())
+    else:
     # write to csv
-    os.makedirs("data", exist_ok=True)
-    df.to_csv(f"data/{current_date}.csv", index=False)
-    return df, total_market_cap
+        os.makedirs("data", exist_ok=True)
+        df.to_csv(f"data/{current_date}.csv", index=False)
+        return df, total_market_cap
 
 
 
@@ -193,7 +210,13 @@ def generate_sp500_treemap(current_date="2025-12-31", test_mode=False, use_indus
     if test_mode:
         df = pd.read_csv("sp500_companies_market_cap_eoy2025.csv")
     else:
-        df = pd.read_csv(f"data/{current_date}.csv") #run get_market_data_of_sp500 first to generate this file
+        if use_S3:
+            # read from S3
+            s3_client = boto3.client('s3', aws_access_key_id=AWS_ACCESS_KEY_ID, aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
+            obj = s3_client.get_object(Bucket=AWS_S3_BUCKET_NAME, Key=f"data/{current_date}.csv")
+            df = pd.read_csv(obj['Body'])
+        else:
+            df = pd.read_csv(f"data/{current_date}.csv") #run get_market_data_of_sp500 first to generate this file
 
     # percent_change,%_of_total_market_cap
     # have color based on percent_change divided by 100 to get -1 to 1 range
@@ -362,28 +385,57 @@ def generate_sp500_treemap(current_date="2025-12-31", test_mode=False, use_indus
 
     # fig.show()
     # save to html
-    os.makedirs("treemaps", exist_ok=True)
-    fig.write_html(f"treemaps/{current_date}_treemap.html")
 
-    #store sp500_percent_change and total_market_cap_str to json
-    os.makedirs("treemap_metadata", exist_ok=True)
-    with open(f"treemap_metadata/{current_date}.json", "w") as json_file:
+    if use_S3:
+        # write to S3
+        s3_client = boto3.client('s3', aws_access_key_id=AWS_ACCESS_KEY_ID, aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
+        html_buffer = StringIO()
+        fig.write_html(html_buffer)
+        s3_client.put_object(Bucket=AWS_S3_BUCKET_NAME, Key=f"treemaps/{current_date}_treemap.html", Body=html_buffer.getvalue())
+
+        # store sp500_percent_change and total_market_cap_str to json
+        metadata_buffer = StringIO()
         json.dump({
             "date": current_date,
             "sp500_percent_change": sp500_percent_change,
             "total_market_cap": total_market_cap_str
-        }, json_file)
+        }, metadata_buffer)
+        s3_client.put_object(Bucket=AWS_S3_BUCKET_NAME, Key=f"treemap_metadata/{current_date}.json", Body=metadata_buffer.getvalue())
+    else:
+        os.makedirs("treemaps", exist_ok=True)
+        fig.write_html(f"treemaps/{current_date}_treemap.html")
+
+        #store sp500_percent_change and total_market_cap_str to json
+        os.makedirs("treemap_metadata", exist_ok=True)
+        with open(f"treemap_metadata/{current_date}.json", "w") as json_file:
+            json.dump({
+                "date": current_date,
+                "sp500_percent_change": sp500_percent_change,
+                "total_market_cap": total_market_cap_str
+            }, json_file)
 
 
 
 
-def read_all_treemap_metadata():
+def read_all_treemap_metadata(use_S3=False):
     metadata = []
-    for json_file in os.listdir("treemap_metadata"):
-        if json_file.endswith(".json"):
-            with open(f"treemap_metadata/{json_file}", "r") as f:
-                data = json.load(f)
-                metadata.append(data)
+    if use_S3:
+        # read from S3
+        s3_client = boto3.client('s3', aws_access_key_id=AWS_ACCESS_KEY_ID, aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
+        response = s3_client.list_objects_v2(Bucket=AWS_S3_BUCKET_NAME, Prefix="treemap_metadata/")
+        if 'Contents' in response:
+            for obj in response['Contents']:
+                key = obj['Key']
+                if key.endswith(".json"):
+                    json_obj = s3_client.get_object(Bucket=AWS_S3_BUCKET_NAME, Key=key)
+                    data = json.load(json_obj['Body'])
+                    metadata.append(data)
+    else:
+        for json_file in os.listdir("treemap_metadata"):
+            if json_file.endswith(".json"):
+                with open(f"treemap_metadata/{json_file}", "r") as f:
+                    data = json.load(f)
+                    metadata.append(data)
     metadata_df = pd.DataFrame(metadata)
     metadata_df = metadata_df.sort_values(by="date", ascending=True).reset_index(drop=True)
     metadata_df['sp500_percent_change'] = metadata_df['sp500_percent_change'].round(2)
@@ -402,16 +454,20 @@ if __name__ == "__main__":
 
 
     #use mcal to get trading days between 2026-01-01 to 2026-01-17 in yyyy-mm-dd format
-    # nyse = mcal.get_calendar('NYSE')
-    # schedule = nyse.schedule(start_date='2026-01-01', end_date='2026-01-17')
-    # trading_days = mcal.date_range(schedule, frequency='1D').strftime('%Y-%m-%d').tolist()
+    nyse = mcal.get_calendar('NYSE')
+    schedule = nyse.schedule(start_date='2026-01-01', end_date='2026-01-03')
+    trading_days = mcal.date_range(schedule, frequency='1D').strftime('%Y-%m-%d').tolist()
 
     # for current_date in trading_days:
     #     print(f"Generating treemap for {current_date}...")
     #     # generate market data
-    #     get_market_data_of_sp500(current_date)
+    #     # get_market_data_of_sp500(current_date)
+    #     get_market_data_of_sp500(current_date, use_S3=True)
     #     # generate treemap
-    #     generate_sp500_treemap(current_date)
+    #     # generate_sp500_treemap(current_date)
+    #     generate_sp500_treemap(current_date, use_S3=True)
+
+
 
 
 
