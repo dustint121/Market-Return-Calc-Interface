@@ -8,4 +8,6 @@ test.py
 __pycache__/
 sp500_chart_to_display.html
 sp500_chart_daily_1m.html
+sp500_candlestick_daily_1m.html
 .env
+test_crontab.py

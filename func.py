@@ -8,6 +8,7 @@ import requests
 import json
 import bs4
 import plotly.express as px
+import plotly.graph_objects as go
 from io import StringIO
 import sys
 import boto3
@@ -485,6 +486,56 @@ def read_all_treemap_metadata(use_S3=False):
     metadata_df['sp500_percent_change'] = metadata_df['sp500_percent_change'].round(2)
     return metadata_df
 
+# Function to generate candlestick chart of S&P 500 index for today with 1-minute intervals
+    # store locally in sp500_candlestick_daily_1m.html
+def generate_candlestick_chart_sp500():
+    nyse = mcal.get_calendar('NYSE')
+    current_date = pd.Timestamp.now(tz='America/New_York').normalize()
+    schedule = nyse.schedule(start_date=current_date, end_date=current_date, tz='America/New_York')
+    market_open = schedule.iloc[0]['market_open']
+    market_close = schedule.iloc[0]['market_close']
+    print(f"Market open: {market_open}, Market close: {market_close}")
+    interval = pd.date_range(start=market_open, end=market_close, freq='1min')
+    df_intervals = pd.DataFrame(interval, columns=['Datetime'])
+    df_intervals['Datetime'] = df_intervals['Datetime'].dt.tz_convert('America/New_York')
+
+
+    current_date = datetime.now().strftime('%Y-%m-%d')
+    start_time = pd.to_datetime(f"{current_date} 09:30:00").tz_localize('America/New_York')
+    end_time = pd.to_datetime(f"{current_date} 16:00:00").tz_localize('America/New_York')
+    price_history = yf.download("^GSPC", start=start_time, end=end_time, interval="1m", 
+                                prepost=True, ignore_tz=False)
+    # print(price_history.head())
+
+    
+    # convert DateTime index to America/New_York timezone
+    price_history.index = price_history.index.tz_convert('America/New_York')
+    price_history["Datetime"] = price_history.index
+    # reset index to make Datetime a column
+    price_history = price_history.reset_index(drop=True)
+    price_history = price_history[['Datetime', 'Close', 'High', 'Low', 'Open', 'Volume']]
+    price_history.columns = price_history.columns.droplevel(1) # drop the extra level from multi-index columns
+
+
+    # merge price_history into df_intervals on Datetime
+    df_intervals = df_intervals.merge(price_history, left_on='Datetime', right_on='Datetime', how='left')
+
+    # graph candlestick chart of SP500 index for today with plotly
+    fig = go.Figure(data=[go.Candlestick(x=df_intervals['Datetime'],
+                open=df_intervals['Open'],
+                high=df_intervals['High'],
+                low=df_intervals['Low'],
+                close=df_intervals['Close'])])
+    fig.update_layout(title='S&P 500 Index Candlestick Chart',
+                      xaxis_title='Time',
+                      yaxis_title='S&P 500 Index Value')
+    fig.update_xaxes(tickangle=45)
+    fig.update_layout(plot_bgcolor='black')
+    fig.update_xaxes(showgrid=False)
+    fig.update_yaxes(showgrid=False)
+
+    # fig.show()
+    fig.write_html("sp500_candlestick_daily_1m.html")
 
 
 
@@ -511,58 +562,5 @@ if __name__ == "__main__":
 
     # get argument from command line for date
         # using s3 by default
-    if len(sys.argv) > 1:
-        date_arg = sys.argv[1]
-        use_S3_arg = True
-        if len(sys.argv) > 2:
-            if  sys.argv[2].lower() not in ['s3', 'local']:
-                print("Second argument must be 's3' or 'local'. Exiting.")
-                sys.exit(1)
-            use_S3_arg = sys.argv[2].lower() == 's3'
-            print(f"Using second argument. Using S3: {use_S3_arg}")
-        #check date_arg format is valid: yyyy-mm-dd
-        try:
-            is_valid_date = bool(datetime.strptime(date_arg, '%Y-%m-%d'))
-            # check if trading day
-            if is_valid_date and is_trading_day(date_arg):
-                # check if date_arg is pass the current date
-                if date_arg > datetime.now().strftime('%Y-%m-%d'):
-                    print(f"{date_arg} is in the future. Please provide a valid trading day.")
-                    status_str = f"Invalid date provided to script: {date_arg} is in the future."
-                    os.makedirs("status_logs", exist_ok=True)
-                    current_date_str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-                    with open(f"status_logs/{current_date_str}_future_not_exist.txt", "w") as f:
-                        f.write(status_str)
-                    sys.exit(1)
-                get_market_data_of_sp500(current_date=date_arg, use_S3=use_S3_arg)
-                generate_sp500_treemap(date_arg, use_S3=use_S3_arg)
+    x = 1
 
-                status_str = f"Successfully generated treemap for {date_arg}." 
-                current_date_str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-                os.makedirs("status_logs", exist_ok=True)
-                # check if date_arg is current date
-                if date_arg == datetime.now().strftime('%Y-%m-%d'):
-                    with open(f"status_logs/{current_date_str}_success_current_date.txt", "w") as f:
-                        f.write(status_str)
-                else:
-                    with open(f"status_logs/{current_date_str}_success.txt", "w") as f:
-                        f.write(status_str)
-                sys.exit(1)
-            else:
-                print(f"{date_arg} is not a trading day.")
-                status_str = f"No issue with script: {date_arg} not a trading day."
-                os.makedirs("status_logs", exist_ok=True)
-                current_date_str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-                with open(f"status_logs/{current_date_str}_valid_nontrading_day.txt", "w") as f:
-                    f.write(status_str)
-                sys.exit(1)
-        except ValueError:
-            print(f"Invalid date format: {date_arg}. Use yyyy-mm-dd format.")
-            status_str = f"Invalid date format provided to script: {date_arg}. Use yyyy-mm-dd format."
-            os.makedirs("status_logs", exist_ok=True)
-            current_date_str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-            with open(f"status_logs/{current_date_str}_value_error.txt", "w") as f:
-                f.write(status_str)
-            sys.exit(1)
-    else:
-        print("Please provide a date argument in yyyy-mm-dd format.")
