@@ -1,7 +1,7 @@
 /test_code
-/data
-/treemaps
-/treemap_metadata
+# /data
+# /treemaps
+# /treemap_metadata
 test.py
 /.venv
 /status_logs
