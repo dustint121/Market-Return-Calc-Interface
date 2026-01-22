@@ -44,41 +44,77 @@
         </div>
     </div>
 
+
+
+    <div class="section-box">
+      <h3 style="margin-top: 0;">Investment Strategy Option</h3>
+      <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+        <div>
+          <label style="font-size: 13px; color:#4b5563;">Strategy:</label><br>
+          <label style="font-size: 13px;">
+            <input type="radio" name="strategy" value="dca" checked>
+            Dollar Cost Averaging
+          </label><br>
+          <label style="font-size: 13px;">
+            <input type="radio" name="strategy" value="buy_the_dip">
+            Buying the Dip
+          </label>
+        </div>
+
+        <div id="dip-threshold-wrapper" style="display:none;">
+          <label style="font-size: 13px; color:#4b5563;">
+            Dip threshold (% drop vs previous trading day):
+          </label><br>
+          <input type="number" id="dip-threshold"
+                class="rounded-input"
+                style="width: 120px;"
+                min="0" step="0.1" value="2">
+          <span style="font-size: 12px; color:#6b7280;">
+            (e.g. 2 means invest when the S&amp;P 500 drops at least 2%)
+          </span>
+        </div>
+      </div>
+    </div>
+
+
     <button type="submit" class="pill-button">Calculate</button>
   </form>
 
-<div id="results" class="section-box" style="margin-top: 20px; display:none;">
-  <h3 style="margin-top: 0;">Results</h3>
-  <p>Total invested: <span id="total-invested"></span></p>
-  <p>Final value: <span id="final-value"></span></p>
-  <p>Total return: <span id="total-return"></span></p>
-  <p>Total return(%): <span id="total-return-pct"></span></p>
-  <p>Final S&P 500 index: <span id="final-price"></span></p>
 
-  <details id="interval-details" style="margin-top: 12px;">
-    <summary style="cursor: pointer; font-weight: 600;">
-      Show per-interval calculations
-    </summary>
-    <div style="margin-top: 8px; overflow-x: auto;">
-      <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
-        <thead>
-          <tr>
-            <th style="border-bottom: 1px solid #d1d5db; text-align: left; padding: 4px 6px;">#</th>
-            <th style="border-bottom: 1px solid #d1d5db; text-align: left; padding: 4px 6px;">Date</th>
-            <th style="border-bottom: 1px solid #d1d5db; text-align: right; padding: 4px 6px;">Index</th>
-            <th style="border-bottom: 1px solid #d1d5db; text-align: right; padding: 4px 6px;">Contribution</th>
-            <th style="border-bottom: 1px solid #d1d5db; text-align: right; padding: 4px 6px;">Shares</th>
-            <th style="border-bottom: 1px solid #d1d5db; text-align: right; padding: 4px 6px;">Final value</th>
-            <th style="border-bottom: 1px solid #d1d5db; text-align: right; padding: 4px 6px;">Profit</th>
-          </tr>
-        </thead>
-        <tbody id="interval-rows">
-          <!-- filled by JS -->
-        </tbody>
-      </table>
-    </div>
-  </details>
-</div>
+
+
+  <div id="results" class="section-box" style="margin-top: 20px; display:none;">
+    <h3 style="margin-top: 0;">Results</h3>
+    <p>Total invested: <span id="total-invested"></span></p>
+    <p>Final value: <span id="final-value"></span></p>
+    <p>Total return: <span id="total-return"></span></p>
+    <p>Total return(%): <span id="total-return-pct"></span></p>
+    <p>Final S&P 500 index: <span id="final-price"></span></p>
+
+    <details id="interval-details" style="margin-top: 12px;">
+      <summary style="cursor: pointer; font-weight: 600;">
+        Show per-interval calculations
+      </summary>
+      <div style="margin-top: 8px; overflow-x: auto;">
+        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+          <thead>
+            <tr>
+              <th style="border-bottom: 1px solid #d1d5db; text-align: left; padding: 4px 6px;">#</th>
+              <th style="border-bottom: 1px solid #d1d5db; text-align: left; padding: 4px 6px;">Date</th>
+              <th style="border-bottom: 1px solid #d1d5db; text-align: right; padding: 4px 6px;">Index</th>
+              <th style="border-bottom: 1px solid #d1d5db; text-align: right; padding: 4px 6px;">Contribution</th>
+              <th style="border-bottom: 1px solid #d1d5db; text-align: right; padding: 4px 6px;">Shares</th>
+              <th style="border-bottom: 1px solid #d1d5db; text-align: right; padding: 4px 6px;">Final value</th>
+              <th style="border-bottom: 1px solid #d1d5db; text-align: right; padding: 4px 6px;">Profit</th>
+            </tr>
+          </thead>
+          <tbody id="interval-rows">
+            <!-- filled by JS -->
+          </tbody>
+        </table>
+      </div>
+    </details>
+  </div>
 
 
   <div id="error" style="margin-top: 12px; color: red;"></div>
@@ -143,71 +179,121 @@
     });
   });
 
-document.getElementById('returns-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const interval = document.querySelector('input[name="interval"]:checked').value;
-  const payload = {
-    start_year: parseInt(startSlider.value),
-    end_year: parseInt(endSlider.value),
-    contribution: parseFloat(document.getElementById('contribution').value || '0'),
-    interval: interval,
-    custom_days: interval === 'custom' ? parseInt(customDaysInput.value || '0') : 0
-  };
+  // NEW: strategy + dip threshold controls
+  const strategyRadios = document.querySelectorAll('input[name="strategy"]');
+  const dipWrapper = document.getElementById('dip-threshold-wrapper');
+  const dipInput = document.getElementById('dip-threshold');
 
-  const errorEl = document.getElementById('error');
-  const resultsEl = document.getElementById('results');
-  const intervalRows = document.getElementById('interval-rows');
-  const intervalDetails = document.getElementById('interval-details');
-
-  errorEl.textContent = '';
-  resultsEl.style.display = 'none';
-  intervalRows.innerHTML = '';
-
-  try {
-    const resp = await fetch('/api/returns', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    const data = await resp.json();
-    if (!resp.ok) {
-      errorEl.textContent = data.error || 'Error computing returns.';
-      return;
-    }
-
-    document.getElementById('total-invested').textContent = `$${data.total_invested.toLocaleString()}`;
-    document.getElementById('final-value').textContent = `$${data.final_value.toLocaleString()}`;
-    document.getElementById('total-return').textContent = `$${data.total_return.toLocaleString()}`;
-    document.getElementById('total-return-pct').textContent = `${data.total_return_pct}%`;
-    document.getElementById('final-price').textContent = data.final_price;
-    resultsEl.style.display = 'block';
-
-    // render per-interval rows
-    if (Array.isArray(data.intervals)) {
-      data.intervals.forEach((it, idx) => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td style="padding: 4px 6px;">${idx + 1}</td>
-          <td style="padding: 4px 6px;">${it.date}</td>
-          <td style="padding: 4px 6px; text-align: right;">${it.buy_price.toLocaleString()}</td>
-          <td style="padding: 4px 6px; text-align: right;">$${it.contribution.toLocaleString()}</td>
-          <td style="padding: 4px 6px; text-align: right;">${it.shares.toLocaleString()}</td>
-          <td style="padding: 4px 6px; text-align: right;">$${it.final_value.toLocaleString()}</td>
-          <td style="padding: 4px 6px; text-align: right;">$${it.profit.toLocaleString()}</td>
-        `;
-        intervalRows.appendChild(tr);
+  if (strategyRadios && dipWrapper && dipInput) {
+    strategyRadios.forEach(r => {
+      r.addEventListener('change', () => {
+        if (r.value === 'buy_the_dip' && r.checked) {
+          dipWrapper.style.display = 'block';
+        } else if (r.value === 'dca' && r.checked) {
+          dipWrapper.style.display = 'none';
+        }
       });
-      // optionally auto-open details if there are intervals
-      if (data.intervals.length > 0) {
-        intervalDetails.open = true;
-      }
-    }
-  } catch (err) {
-    console.error(err);
-    errorEl.textContent = 'Unexpected error: ' + err.message;
+    });
   }
-});
 
+  document.getElementById('returns-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const interval = document.querySelector('input[name="interval"]:checked').value;
+    const strategy = document.querySelector('input[name="strategy"]:checked').value;
+    const dipThreshold = strategy === 'buy_the_dip'
+      ? parseFloat((dipInput && dipInput.value) || '0')
+      : 0;
+
+    const payload = {
+      start_year: parseInt(startSlider.value),
+      end_year: parseInt(endSlider.value),
+      contribution: parseFloat(document.getElementById('contribution').value || '0'),
+      interval: interval,
+      custom_days: interval === 'custom' ? parseInt(customDaysInput.value || '0') : 0,
+      strategy: strategy,                 // NEW
+      dip_threshold_pct: dipThreshold     // NEW
+    };
+
+    const errorEl = document.getElementById('error');
+    const resultsEl = document.getElementById('results');
+    const intervalRows = document.getElementById('interval-rows');
+    const intervalDetails = document.getElementById('interval-details');
+
+    errorEl.textContent = '';
+    resultsEl.style.display = 'none';
+    intervalRows.innerHTML = '';
+
+    try {
+      const resp = await fetch('/api/returns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        errorEl.textContent = data.error || 'Error computing returns.';
+        return;
+      }
+
+      document.getElementById('total-invested').textContent = `$${data.total_invested.toLocaleString()}`;
+      document.getElementById('final-value').textContent = `$${data.final_value.toLocaleString()}`;
+      document.getElementById('total-return').textContent = `$${data.total_return.toLocaleString()}`;
+      document.getElementById('total-return-pct').textContent = `${data.total_return_pct}%`;
+      document.getElementById('final-price').textContent = data.final_price;
+      resultsEl.style.display = 'block';
+
+      // render per-interval rows
+      if (Array.isArray(data.intervals)) {
+        data.intervals.forEach((it, idx) => {
+          const tr = document.createElement('tr');
+
+          const buyPriceDisplay =
+            it.buy_price !== null && it.buy_price !== undefined
+              ? it.buy_price.toLocaleString()
+              : '-';
+
+          const contributionDisplay =
+            it.contribution !== null && it.contribution !== undefined
+              ? it.contribution.toLocaleString()
+              : '-';
+
+          const sharesDisplay =
+            it.shares !== null && it.shares !== undefined
+              ? it.shares.toLocaleString()
+              : '-';
+
+          const finalValueDisplay =
+            it.final_value !== null && it.final_value !== undefined
+              ? it.final_value.toLocaleString()
+              : '-';
+
+          const profitDisplay =
+            it.profit !== null && it.profit !== undefined
+              ? it.profit.toLocaleString()
+              : '-';
+
+          tr.innerHTML = `
+            <td style="padding: 4px 6px;">${idx + 1}</td>
+            <td style="padding: 4px 6px;">${it.date}</td>
+            <td style="padding: 4px 6px; text-align: right;">${buyPriceDisplay}</td>
+            <td style="padding: 4px 6px; text-align: right;">$${contributionDisplay}</td>
+            <td style="padding: 4px 6px; text-align: right;">${sharesDisplay}</td>
+            <td style="padding: 4px 6px; text-align: right;">$${finalValueDisplay}</td>
+            <td style="padding: 4px 6px; text-align: right;">$${profitDisplay}</td>
+          `;
+          intervalRows.appendChild(tr);
+        });
+
+        if (data.intervals.length > 0) {
+          intervalDetails.open = true;
+        }
+      }
+    } 
+    catch (err) {
+      console.error(err);
+      errorEl.textContent = 'Unexpected error: ' + err.message;
+    }
+  });
 
   const viewGraphBtn = document.getElementById('view-graph-btn');
   const graphModal = document.getElementById('graph-modal');
@@ -254,8 +340,5 @@ document.getElementById('returns-form').addEventListener('submit', async (e) => 
       }
     });
   }
-
-
-
 </script>
 {% endblock %}

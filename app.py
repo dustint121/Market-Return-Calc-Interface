@@ -32,6 +32,7 @@ def page1():
                            start_year=start_year,
                            end_year=end_year)
 
+
 @app.route("/api/returns", methods=["POST"])
 def api_returns():
     data = request.get_json()
@@ -40,6 +41,10 @@ def api_returns():
     contribution = float(data["contribution"])
     interval = data["interval"]
     custom_days = int(data.get("custom_days") or 0)
+
+    # strategy and dip threshold
+    strategy = data.get("strategy", "dca")  # "dca" or "buy_the_dip"
+    dip_threshold_pct = float(data.get("dip_threshold_pct") or 0.0)  # e.g. 2 for -2%
 
     df = fetch_SP500_index_data_yf(start_year=start_year, end_year=end_year)
     df["Date"] = pd.to_datetime(df["Date"])
@@ -60,44 +65,112 @@ def api_returns():
     else:
         return jsonify({"error": "Invalid interval"}), 400
 
-    first_date = df["Date"].min()
-    last_date = df["Date"].max()
-    current = first_date
-
     total_invested = 0.0
     shares_owned = 0.0
-    intervals = []  # store each contribution
+    intervals = []
 
-    while current <= last_date:
-        sub = df[df["Date"] >= current]
-        if sub.empty:
-            break
-        row = sub.iloc[0]
-        price = float(row["Close"])
-        date = row["Date"]
-
-        shares = contribution / price
-        shares_owned += shares
-        total_invested += contribution
-
-        intervals.append({
-            "date": date.strftime("%Y-%m-%d"),
-            "buy_price": round(price, 2),
-            "contribution": round(contribution, 2),
-            "shares": round(shares, 6),  # keep some precision
+    # For both strategies: the date when the next contribution becomes available
+    # Start at the first trading day
+    if df.empty:
+        return jsonify({
+            "total_invested": 0.0,
+            "final_value": 0.0,
+            "total_return": 0.0,
+            "total_return_pct": 0.0,
+            "final_price": 0.0,
+            "intervals": [],
+            "strategy": strategy,
+            "dip_threshold_pct": dip_threshold_pct,
         })
 
-        current = current + pd.Timedelta(days=step)
+    next_contribution_date = df["Date"].iloc[0]
+
+    # For buy-the-dip: cash that has accumulated but not yet invested
+    accumulated_cash = 0.0
+    prev_close = None  # previous trading day's close, for dip detection
+
+    for _, row in df.iterrows():
+        date = row["Date"]
+        price = float(row["Close"])
+
+        # 1) If we are on or past the next contribution date, add one contribution
+        if date >= next_contribution_date:
+            if strategy == "dca":
+                # invest immediately on each contribution date
+                invest_amount = contribution
+                shares = invest_amount / price
+                shares_owned += shares
+                total_invested += invest_amount
+
+                intervals.append({
+                    "date": date.strftime("%Y-%m-%d"),
+                    "buy_price": round(price, 2),
+                    "contribution": round(invest_amount, 2),
+                    "shares": round(shares, 6),
+                    "strategy": "dca",
+                })
+            else:  # buy_the_dip – only *add* cash now, don't necessarily invest
+                accumulated_cash += contribution
+                total_invested += contribution  # money committed and available
+            # schedule next contribution
+            next_contribution_date = next_contribution_date + pd.Timedelta(days=step)
+
+        # 2) For buy-the-dip, check EVERY trading day for a dip vs previous close
+        if strategy == "buy_the_dip":
+            if prev_close is not None and dip_threshold_pct > 0 and accumulated_cash > 0:
+                change_pct = (price - prev_close) / prev_close * 100.0
+                dip_level = -abs(dip_threshold_pct)  # e.g. -2 means -2%
+
+                if change_pct <= dip_level:
+                    invest_amount = accumulated_cash
+                    shares = invest_amount / price
+                    shares_owned += shares
+                    accumulated_cash = 0.0
+
+                    intervals.append({
+                        "date": date.strftime("%Y-%m-%d"),
+                        "buy_price": round(price, 2),
+                        "contribution": round(invest_amount, 2),
+                        "shares": round(shares, 6),
+                        "strategy": "buy_the_dip",
+                        "percent_change_vs_prev": round(change_pct, 2),
+                    })
+
+        # 3) update prev_close at end of each trading day
+        prev_close = price
 
     final_price = float(df.iloc[-1]["Close"])
-    final_value = shares_owned * final_price
-    total_return = final_value - total_invested
-    total_return_pct = (total_return / total_invested * 100) if total_invested > 0 else 0.0
+
+    # If using buy-the-dip and there is leftover cash, treat it as a final interval
+    if strategy == "buy_the_dip" and accumulated_cash > 0:
+        intervals.append({
+            "date": df["Date"].iloc[-1].strftime("%Y-%m-%d"),
+            "buy_price": None,               # no actual buy price
+            "contribution": round(accumulated_cash, 2),
+            "shares": 0.0,                   # not invested
+            "strategy": "buy_the_dip_uninvested",
+            "percent_change_vs_prev": None,
+        })
+        # accumulated_cash is already included in total_invested; do NOT change shares_owned
+    if strategy == "dca":
+        final_value = shares_owned * final_price
+        total_return = final_value - total_invested
+        total_return_pct = (total_return / total_invested * 100) if total_invested > 0 else 0.0
+    else:  # buy_the_dip
+        final_value = shares_owned * final_price + accumulated_cash
+        total_return = final_value - total_invested
+        total_return_pct = (total_return / total_invested * 100) if total_invested > 0 else 0.0
 
     # compute per-interval final value and profit
     for it in intervals:
-        it["final_value"] = round(it["shares"] * final_price, 2)
-        it["profit"] = round(it["final_value"] - it["contribution"], 2)
+        if it["shares"] > 0:
+            it["final_value"] = round(it["shares"] * final_price, 2)
+            it["profit"] = round(it["final_value"] - it["contribution"], 2)
+        else:
+            # uninvested cash: final value equals contribution, profit = 0
+            it["final_value"] = round(it["contribution"], 2)
+            it["profit"] = 0.0
+
 
     return jsonify({
         "total_invested": round(total_invested, 2),
@@ -105,8 +178,12 @@ def api_returns():
         "total_return": round(total_return, 2),
         "total_return_pct": round(total_return_pct, 2),
         "final_price": round(final_price, 2),
-        "intervals": intervals,  # NEW
+        "intervals": intervals,
+        "strategy": strategy,
+        "dip_threshold_pct": dip_threshold_pct,
     })
+
+
 
 
 @app.route("/api/sp500_chart", methods=["POST"])
