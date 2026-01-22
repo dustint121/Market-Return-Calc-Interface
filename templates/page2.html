@@ -4,17 +4,30 @@
 <div class="box">
   <h2>SP500 Treemap Snapshots</h2>
 
-  <div style="margin-bottom: 16px; display:flex; align-items:center; gap:12px;">
+  <div id="data-source-container"
+     data-s3-enabled="{% if s3_enabled %}true{% else %}false{% endif %}"
+     style="margin-bottom: 16px; display:flex; align-items:center; gap:12px;">
+
     <span style="font-size: 13px; color:#4b5563;">Data source:</span>
     <label class="switch">
-      <input type="checkbox" id="data-source-toggle"
-            {% if data_source == 's3' %}checked{% endif %}>
+      <input type="checkbox"
+            id="data-source-toggle"
+            {% if not s3_enabled %}disabled{% endif %}
+            {% if s3_enabled and data_source == 's3' %}checked{% endif %}>
       <span class="slider round"></span>
     </label>
     <span id="data-source-label" style="font-size: 13px; color:#111827;">
-      {% if data_source == 's3' %}AWS S3{% else %}Local (Limited Number of Files on OS For Demoing){% endif %}
+      {% if s3_enabled and data_source == 's3' %}
+        AWS S3
+      {% else %}
+        Local
+      {% endif %}
     </span>
+    {% if not s3_enabled %}
+      <span style="font-size: 12px; color:#9ca3af;">S3 unavailable (missing or invalid AWS config)</span>
+    {% endif %}
   </div>
+
 
   {% if files %}
 
@@ -128,10 +141,17 @@
 
 {% block scripts %}
 <script>
+  const container = document.getElementById('data-source-container');
   const toggle = document.getElementById('data-source-toggle');
   const label = document.getElementById('data-source-label');
 
-  if (toggle) {
+  let s3EnabledFlag = false;
+  if (container) {
+    const attr = container.getAttribute('data-s3-enabled');
+    s3EnabledFlag = (attr === 'true');
+  }
+
+  if (toggle && s3EnabledFlag) {
     toggle.addEventListener('change', async () => {
       const source = toggle.checked ? 's3' : 'local';
       label.textContent = source === 's3' ? 'AWS S3' : 'Local';
@@ -144,16 +164,20 @@
         const data = await resp.json();
         if (!resp.ok || !data.ok) {
           alert('Failed to change data source');
+          toggle.checked = false;
+          label.textContent = 'Local';
           return;
         }
-        // reload to refresh treemaps + metadata from new source
         window.location.reload();
       } catch (err) {
         console.error(err);
         alert('Unexpected error changing data source');
+        toggle.checked = false;
+        label.textContent = 'Local';
       }
     });
   }
 </script>
 
 {% endblock %}
+

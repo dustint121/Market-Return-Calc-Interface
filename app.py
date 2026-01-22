@@ -14,10 +14,6 @@ app = Flask(__name__)
 
 
 
-# DATA_SOURCE = "local"  # or "s3" 
-DATA_SOURCE = "s3"
-
-
 # ---------- PAGE 1: S&P 500 returns ----------
 GRAPH_DIR = os.path.join(os.path.dirname(__file__), "")
 os.makedirs(GRAPH_DIR, exist_ok=True)
@@ -228,15 +224,37 @@ AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
 AWS_S3_BUCKET_NAME = os.getenv("AWS_S3_BUCKET_NAME")
 AWS_REGION_NAME = os.getenv("AWS_REGION_NAME", "us-west-1")
-s3_client = boto3.client('s3', aws_access_key_id=AWS_ACCESS_KEY_ID, aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
+
+DATA_SOURCE = "s3"  # default to s3
+
+def s3_config_valid():
+    """Return True only if all required S3 env vars are non-empty."""
+    return all([
+        AWS_ACCESS_KEY_ID,
+        AWS_SECRET_ACCESS_KEY,
+        AWS_S3_BUCKET_NAME,
+        AWS_REGION_NAME,
+    ])
 
 
+s3_client = None
+if s3_config_valid():
+    s3_client = boto3.client('s3', aws_access_key_id=AWS_ACCESS_KEY_ID, aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
+
+ 
 @app.route("/page2", methods=["GET"])
 def page2():
-    use_s3 = (DATA_SOURCE == "s3")
+    global DATA_SOURCE
+
+    s3_ok = s3_config_valid()
+    # If env is not valid, force local
+    if not s3_ok:
+        DATA_SOURCE = "local"
+
+    use_s3 = s3_ok and (DATA_SOURCE == "s3")
 
     files = []
-    if use_s3:
+    if use_s3 and s3_client is not None:
         resp = s3_client.list_objects_v2(Bucket=AWS_S3_BUCKET_NAME, Prefix="treemaps/")
         if "Contents" in resp:
             for obj in resp["Contents"]:
@@ -263,21 +281,22 @@ def page2():
         "page2.html",
         files=files,
         meta_by_date=meta_by_date,
-        data_source=DATA_SOURCE,
+        data_source=DATA_SOURCE,      # "local" or "s3"
         aws_bucket=AWS_S3_BUCKET_NAME,
         aws_region=AWS_REGION_NAME,
+        s3_enabled=s3_ok,             # NEW
     )
+
 
 @app.route("/treemaps/<path:filename>")
 def treemap_file(filename):
-    if DATA_SOURCE == "s3":
-        # proxy file from S3
+    if DATA_SOURCE == "s3" and s3_config_valid() and s3_client is not None:
         key = f"treemaps/{filename}"
         obj = s3_client.get_object(Bucket=AWS_S3_BUCKET_NAME, Key=key)
-        # stream raw HTML
         return obj["Body"].read(), 200, {"Content-Type": "text/html"}
     else:
         return send_from_directory(TREEMAP_DIR, filename)
+
 
 @app.route("/api/set_data_source", methods=["POST"])
 def set_data_source():
@@ -286,8 +305,15 @@ def set_data_source():
     source = data.get("source", "local")
     if source not in ("local", "s3"):
         return jsonify({"error": "Invalid source"}), 400
+
+    if source == "s3" and not s3_config_valid():
+        # refuse to switch to S3
+        DATA_SOURCE = "local"
+        return jsonify({"ok": False, "source": DATA_SOURCE, "reason": "s3_unavailable"}), 400
+
     DATA_SOURCE = source
     return jsonify({"ok": True, "source": DATA_SOURCE})
+
 
 
 
