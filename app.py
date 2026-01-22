@@ -219,7 +219,8 @@ def serve_graph(filename):
 
 # ---------- PAGE 2: Treemaps List ----------
 
-TREEMAP_DIR = os.path.join(os.path.dirname(__file__), "treemaps")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # folder of this file
+TREEMAP_DIR = os.path.join(BASE_DIR, "treemaps")
 AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
 AWS_S3_BUCKET_NAME = os.getenv("AWS_S3_BUCKET_NAME")

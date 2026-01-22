@@ -131,7 +131,8 @@ def get_current_sp500_companies(current_date=None, save_to_csv=False):
     # filter changes after current_date
     df_changes_final = df_changes_final[pd.to_datetime(df_changes_final["Effective Date"]) >= pd.to_datetime(current_date)]
     
-    company_df = pd.read_csv("sp500_companies_2023-2025.csv")
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # folder of this file
+    company_df = pd.read_csv(f"{BASE_DIR}/sp500_companies_2023-2025.csv")
     for index, row in df_changes_final.iterrows():
         #remove the company in the "Added Ticker" from df if it exists
         if pd.notna(row["Added Ticker"]):
@@ -151,7 +152,8 @@ def get_current_sp500_companies(current_date=None, save_to_csv=False):
 def get_market_data_of_sp500(current_date="2025-12-31", use_S3=False):
     df = None
     if current_date < "2026-02-01" and current_date >= "2025-12-23":
-        df = pd.read_csv("sp500_companies_eoy2025.csv")
+        BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # folder of this file
+        df = pd.read_csv(f"{BASE_DIR}/sp500_companies_eoy2025.csv")
     else:
         df = get_current_sp500_companies()
 
@@ -168,12 +170,7 @@ def get_market_data_of_sp500(current_date="2025-12-31", use_S3=False):
     total_market_cap = 0
     for ticker_symbol in list_of_tickers:
         try:
-            # if index < 299 or index > 300: # for debugging "MMC"
-            #     index += 1
-            #     continue
-
             print(f"Processing {index+1}/{len(list_of_tickers)}: {ticker_symbol}")
-
 
             # if ticker symbol is "MRSH" and current_date is before 2026-01-06,  switch to "MMC"
                 # ticker symbol change; no data under "MRSH" before 2026-01-06 
@@ -245,7 +242,8 @@ def get_market_data_of_sp500(current_date="2025-12-31", use_S3=False):
 def generate_sp500_treemap(current_date="2025-12-31", test_mode=False, use_industry=False, use_S3=False):
     df = None
     if test_mode:
-        df = pd.read_csv("sp500_companies_market_cap_eoy2025.csv")
+        BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # folder of this file
+        df = pd.read_csv(f"{BASE_DIR}/sp500_companies_market_cap_eoy2025.csv")
     else:
         if use_S3:
             # read from S3
@@ -253,7 +251,8 @@ def generate_sp500_treemap(current_date="2025-12-31", test_mode=False, use_indus
             obj = s3_client.get_object(Bucket=AWS_S3_BUCKET_NAME, Key=f"data/{current_date}.csv")
             df = pd.read_csv(obj['Body'])
         else:
-            df = pd.read_csv(f"data/{current_date}.csv") #run get_market_data_of_sp500 first to generate this file
+            BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # folder of this file
+            df = pd.read_csv(f"{BASE_DIR}/data/{current_date}.csv") #run get_market_data_of_sp500 first to generate this file
 
     # percent_change,%_of_total_market_cap
     # have color based on percent_change divided by 100 to get -1 to 1 range
@@ -451,8 +450,8 @@ def generate_sp500_treemap(current_date="2025-12-31", test_mode=False, use_indus
         fig.write_html(f"treemaps/{current_date}_treemap.html")
 
         #store sp500_percent_change and total_market_cap_str to json
-        os.makedirs("treemap_metadata", exist_ok=True)
-        with open(f"treemap_metadata/{current_date}.json", "w") as json_file:
+        os.makedirs(f"{BASE_DIR}/treemap_metadata", exist_ok=True)
+        with open(f"{BASE_DIR}/treemap_metadata/{current_date}.json", "w") as json_file:
             json.dump({
                 "date": current_date,
                 "sp500_percent_change": sp500_percent_change,
@@ -476,9 +475,10 @@ def read_all_treemap_metadata(use_S3=False):
                     data = json.load(json_obj['Body'])
                     metadata.append(data)
     else:
-        for json_file in os.listdir("treemap_metadata"):
+        BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # folder of this file
+        for json_file in os.listdir(f"{BASE_DIR}/treemap_metadata"):
             if json_file.endswith(".json"):
-                with open(f"treemap_metadata/{json_file}", "r") as f:
+                with open(f"{BASE_DIR}/treemap_metadata/{json_file}", "r") as f:
                     data = json.load(f)
                     metadata.append(data)
     metadata_df = pd.DataFrame(metadata)
