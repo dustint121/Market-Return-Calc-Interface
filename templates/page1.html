@@ -47,7 +47,32 @@
 
 
     <div class="section-box">
-      <h3 style="margin-top: 0;">Investment Strategy Option</h3>
+      <div style="display:flex; align-items:center; gap:6px;">
+        <h3 style="margin: 0;">Investment Strategy Option</h3>
+        <span id="strategy-help-trigger"
+              style="display:inline-flex; align-items:center; justify-content:center;
+                    width:18px; height:18px; border-radius:999px; border:1px solid #9ca3af;
+                    font-size:12px; cursor:pointer; color:#4b5563; background-color:#f9fafb;">
+          ?
+        </span>
+      </div>
+
+      <!-- popup -->
+      <div id="strategy-help-popup"
+          style="display:none; position:absolute; z-index:30;
+                  max-width:280px; padding:10px 12px; font-size:12px;
+                  background:#111827; color:#f9fafb; border-radius:6px;
+                  box-shadow:0 4px 12px rgba(15,23,42,0.4);">
+        <div style="font-weight:600; margin-bottom:4px;">Strategy explanations</div>
+        <div style="margin-bottom:4px;">
+          <strong>DCA</strong>: Invest the same amount at each interval regardless of market moves.
+        </div>
+        <div>
+          <strong>Buying the Dip</strong>: Add cash each interval but only invest when the S&amp;P 500
+          falls at least the chosen % vs the previous trading day; all accumulated cash is used on dip days.
+        </div>
+      </div>
+
       <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
         <div>
           <label style="font-size: 13px; color:#4b5563;">Strategy:</label><br>
@@ -178,6 +203,39 @@
       }
     });
   });
+
+  // Strategy help popup
+  const helpTrigger = document.getElementById('strategy-help-trigger');
+  const helpPopup = document.getElementById('strategy-help-popup');
+
+  if (helpTrigger && helpPopup) {
+    helpTrigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isVisible = helpPopup.style.display === 'block';
+
+      if (isVisible) {
+        helpPopup.style.display = 'none';
+        return;
+      }
+
+      const rect = helpTrigger.getBoundingClientRect();
+      const scrollY = window.scrollY || window.pageYOffset;
+      const scrollX = window.scrollX || window.pageXOffset;
+
+      helpPopup.style.left = (rect.left + scrollX + 24) + 'px';
+      helpPopup.style.top = (rect.top + scrollY + 4) + 'px';
+      helpPopup.style.display = 'block';
+    });
+
+    // Hide when clicking elsewhere
+    document.addEventListener('click', (e) => {
+      if (!helpPopup.contains(e.target) && e.target !== helpTrigger) {
+        helpPopup.style.display = 'none';
+      }
+    });
+  }
+
+
 
   // NEW: strategy + dip threshold controls
   const strategyRadios = document.querySelectorAll('input[name="strategy"]');
