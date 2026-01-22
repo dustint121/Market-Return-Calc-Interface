@@ -535,7 +535,10 @@ def generate_candlestick_chart_sp500():
     fig.update_yaxes(showgrid=False)
 
     # fig.show()
-    fig.write_html("sp500_candlestick_daily_1m.html")
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # folder of this file
+    output_path = os.path.join(BASE_DIR, "sp500_candlestick_daily_1m.html")
+    print(f"Saving candlestick chart to {output_path}...")
+    fig.write_html(output_path)
 
 
 
