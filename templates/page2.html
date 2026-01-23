@@ -5,9 +5,8 @@
   <h2>SP500 Treemap Snapshots</h2>
 
   <div id="data-source-container"
-     data-s3-enabled="{% if s3_enabled %}true{% else %}false{% endif %}"
-     style="margin-bottom: 16px; display:flex; align-items:center; gap:12px;">
-
+      data-s3-enabled="{% if s3_enabled %}true{% else %}false{% endif %}"
+      style="margin-bottom: 16px; display:flex; align-items:center; gap:12px;">
     <span style="font-size: 13px; color:#4b5563;">Data source:</span>
     <label class="switch">
       <input type="checkbox"
@@ -17,11 +16,7 @@
       <span class="slider round"></span>
     </label>
     <span id="data-source-label" style="font-size: 13px; color:#111827;">
-      {% if s3_enabled and data_source == 's3' %}
-        AWS S3
-      {% else %}
-        Local
-      {% endif %}
+      {% if s3_enabled and data_source == 's3' %}AWS S3{% else %}Local{% endif %}
     </span>
     {% if not s3_enabled %}
       <span style="font-size: 12px; color:#9ca3af;">S3 unavailable (missing or invalid AWS config)</span>
@@ -151,33 +146,18 @@
     s3EnabledFlag = (attr === 'true');
   }
 
+  function currentPagePath() {
+    return window.location.pathname; // e.g. "/page2"
+  }
+
   if (toggle && s3EnabledFlag) {
-    toggle.addEventListener('change', async () => {
+    toggle.addEventListener('change', () => {
       const source = toggle.checked ? 's3' : 'local';
       label.textContent = source === 's3' ? 'AWS S3' : 'Local';
-      try {
-        const resp = await fetch('/api/set_data_source', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ source })
-        });
-        const data = await resp.json();
-        if (!resp.ok || !data.ok) {
-          alert('Failed to change data source');
-          toggle.checked = false;
-          label.textContent = 'Local';
-          return;
-        }
-        window.location.reload();
-      } catch (err) {
-        console.error(err);
-        alert('Unexpected error changing data source');
-        toggle.checked = false;
-        label.textContent = 'Local';
-      }
+      const base = currentPagePath();
+      const url = `${base}?source=${encodeURIComponent(source)}`;      window.location.href = url;
     });
   }
 </script>
-
 {% endblock %}
 

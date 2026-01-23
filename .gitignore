@@ -11,3 +11,4 @@ sp500_chart_daily_1m.html
 sp500_candlestick_daily_1m.html
 .env
 test_crontab.py
+crontab.txt

@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask import Flask, render_template, request, jsonify, send_from_directory, make_response
 from datetime import datetime
 import os
 import math
@@ -226,7 +226,6 @@ AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
 AWS_S3_BUCKET_NAME = os.getenv("AWS_S3_BUCKET_NAME")
 AWS_REGION_NAME = os.getenv("AWS_REGION_NAME", "us-west-1")
 
-DATA_SOURCE = "s3"  # default to s3
 
 def s3_config_valid():
     """Return True only if all required S3 env vars are non-empty."""
@@ -245,14 +244,16 @@ if s3_config_valid():
  
 @app.route("/page2", methods=["GET"])
 def page2():
-    global DATA_SOURCE
-
     s3_ok = s3_config_valid()
-    # If env is not valid, force local
-    if not s3_ok:
-        DATA_SOURCE = "local"
 
-    use_s3 = s3_ok and (DATA_SOURCE == "s3")
+    # read requested source from query string: ?source=local or ?source=s3
+    requested = request.args.get("source", "").lower()
+    if requested not in ("local", "s3"):
+        requested = "s3" if s3_ok else "local"
+
+    # effective source: only use s3 if requested AND available
+    data_source = "s3" if (requested == "s3" and s3_ok) else "local"
+    use_s3 = (data_source == "s3")
 
     files = []
     if use_s3 and s3_client is not None:
@@ -282,16 +283,21 @@ def page2():
         "page2.html",
         files=files,
         meta_by_date=meta_by_date,
-        data_source=DATA_SOURCE,      # "local" or "s3"
+        data_source=data_source,   # drives UI state
         aws_bucket=AWS_S3_BUCKET_NAME,
         aws_region=AWS_REGION_NAME,
-        s3_enabled=s3_ok,             # NEW
+        s3_enabled=s3_ok,
     )
+
 
 
 @app.route("/treemaps/<path:filename>")
 def treemap_file(filename):
-    if DATA_SOURCE == "s3" and s3_config_valid() and s3_client is not None:
+    s3_ok = s3_config_valid()
+    requested = request.args.get("source", "").lower()
+    data_source = "s3" if (requested == "s3" and s3_ok) else "local"
+
+    if data_source == "s3" and s3_ok and s3_client is not None:
         key = f"treemaps/{filename}"
         obj = s3_client.get_object(Bucket=AWS_S3_BUCKET_NAME, Key=key)
         return obj["Body"].read(), 200, {"Content-Type": "text/html"}
@@ -299,21 +305,29 @@ def treemap_file(filename):
         return send_from_directory(TREEMAP_DIR, filename)
 
 
+
 @app.route("/api/set_data_source", methods=["POST"])
 def set_data_source():
-    global DATA_SOURCE
     data = request.get_json()
     source = data.get("source", "local")
     if source not in ("local", "s3"):
         return jsonify({"error": "Invalid source"}), 400
 
-    if source == "s3" and not s3_config_valid():
-        # refuse to switch to S3
-        DATA_SOURCE = "local"
-        return jsonify({"ok": False, "source": DATA_SOURCE, "reason": "s3_unavailable"}), 400
+    # if S3 requested but not available, force local
+    s3_ok = s3_config_valid()
+    effective = "s3" if (source == "s3" and s3_ok) else "local"
+    if source == "s3" and not s3_ok:
+        resp = make_response(jsonify({"ok": False, "source": effective, "reason": "s3_unavailable"}), 400)
+    else:
+        resp = make_response(jsonify({"ok": True, "source": effective}))
 
-    DATA_SOURCE = source
-    return jsonify({"ok": True, "source": DATA_SOURCE})
+    #using http, not https; so secure must be False
+    resp.set_cookie("data_source", effective, max_age=30*24*3600,
+                    httponly=True,       # Prevents JS access (Security best practice)
+                    secure=False,        # MUST be False for HTTP
+                    samesite='Lax'       # Standard for modern browsers over HTTP
+    )
+    return resp
 
 
 

@@ -475,13 +475,20 @@ def read_all_treemap_metadata(use_S3=False):
                     data = json.load(json_obj['Body'])
                     metadata.append(data)
     else:
-        BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # folder of this file
-        for json_file in os.listdir(f"{BASE_DIR}/treemap_metadata"):
-            if json_file.endswith(".json"):
-                with open(f"{BASE_DIR}/treemap_metadata/{json_file}", "r") as f:
-                    data = json.load(f)
-                    metadata.append(data)
+        BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+        meta_dir = os.path.join(BASE_DIR, "treemap_metadata")
+        if os.path.isdir(meta_dir):
+            for json_file in os.listdir(meta_dir):
+                if json_file.endswith(".json"):
+                    with open(os.path.join(meta_dir, json_file), "r") as f:
+                        data = json.load(f)
+                        metadata.append(data)
+        else:
+            # no local metadata present; return empty
+            metadata = []
     metadata_df = pd.DataFrame(metadata)
+    if metadata_df.empty:
+        return pd.DataFrame(columns=["date", "sp500_percent_change", "total_market_cap"])
     metadata_df = metadata_df.sort_values(by="date", ascending=True).reset_index(drop=True)
     metadata_df['sp500_percent_change'] = metadata_df['sp500_percent_change'].round(2)
     return metadata_df
