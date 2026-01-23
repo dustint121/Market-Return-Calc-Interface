@@ -39,7 +39,7 @@ def api_returns():
     custom_days = int(data.get("custom_days") or 0)
 
     # strategy and dip threshold
-    strategy = data.get("strategy", "dca")  # "dca" or "buy_the_dip"
+    strategy = data.get("strategy", "dca")  # "dca", "buy_the_dip", "buy_the_dip_non_immediate"
     dip_threshold_pct = float(data.get("dip_threshold_pct") or 0.0)  # e.g. 2 for -2%
 
     df = fetch_SP500_index_data_yf(start_year=start_year, end_year=end_year)
@@ -65,8 +65,7 @@ def api_returns():
     shares_owned = 0.0
     intervals = []
 
-    # For both strategies: the date when the next contribution becomes available
-    # Start at the first trading day
+    # Start at first trading day
     if df.empty:
         return jsonify({
             "total_invested": 0.0,
@@ -81,18 +80,20 @@ def api_returns():
 
     next_contribution_date = df["Date"].iloc[0]
 
-    # For buy-the-dip: cash that has accumulated but not yet invested
+    # For dip strategies: accumulated cash not yet invested
     accumulated_cash = 0.0
-    prev_close = None  # previous trading day's close, for dip detection
+    prev_close = None  # previous trading day's close, for “immediate” dip detection
+
+    # Precompute a Series for easier date-based lookup
+    df = df.reset_index(drop=True)
 
     for _, row in df.iterrows():
         date = row["Date"]
         price = float(row["Close"])
 
-        # 1) If we are on or past the next contribution date, add one contribution
+        # 1) Contribution becomes available on/after next_contribution_date
         if date >= next_contribution_date:
             if strategy == "dca":
-                # invest immediately on each contribution date
                 invest_amount = contribution
                 shares = invest_amount / price
                 shares_owned += shares
@@ -105,18 +106,18 @@ def api_returns():
                     "shares": round(shares, 6),
                     "strategy": "dca",
                 })
-            else:  # buy_the_dip – only *add* cash now, don't necessarily invest
+            else:
+                # both dip strategies: accumulate cash at each interval
                 accumulated_cash += contribution
-                total_invested += contribution  # money committed and available
+                total_invested += contribution
             # schedule next contribution
             next_contribution_date = next_contribution_date + pd.Timedelta(days=step)
 
-        # 2) For buy-the-dip, check EVERY trading day for a dip vs previous close
+        # 2A) Immediate buy-the-dip: check only vs previous trading day's close
         if strategy == "buy_the_dip":
             if prev_close is not None and dip_threshold_pct > 0 and accumulated_cash > 0:
                 change_pct = (price - prev_close) / prev_close * 100.0
-                dip_level = -abs(dip_threshold_pct)  # e.g. -2 means -2%
-
+                dip_level = -abs(dip_threshold_pct)
                 if change_pct <= dip_level:
                     invest_amount = accumulated_cash
                     shares = invest_amount / price
@@ -132,41 +133,77 @@ def api_returns():
                         "percent_change_vs_prev": round(change_pct, 2),
                     })
 
-        # 3) update prev_close at end of each trading day
+        # 2B) Non-immediate buy-the-dip: look back over the interval window
+        if strategy == "buy_the_dip_non_immediate":
+            if dip_threshold_pct > 0 and accumulated_cash > 0:
+                # Look back up to 'step' calendar days before current date
+                window_start = date - pd.Timedelta(days=step)
+                mask = (df["Date"] >= window_start) & (df["Date"] < date)
+                window = df.loc[mask]
+
+                dipped = False
+                worst_change = None
+
+                # If there aren't enough days, this window will just be shorter; that's fine.
+                for _, prev_row in window.iterrows():
+                    prev_price = float(prev_row["Close"])
+                    if prev_price == 0:
+                        continue
+                    change_pct = (price - prev_price) / prev_price * 100.0
+                    if worst_change is None or change_pct < worst_change:
+                        worst_change = change_pct
+
+                if worst_change is not None:
+                    dip_level = -abs(dip_threshold_pct)
+                    if worst_change <= dip_level:
+                        invest_amount = accumulated_cash
+                        shares = invest_amount / price
+                        shares_owned += shares
+                        accumulated_cash = 0.0
+                        dipped = True
+
+                        intervals.append({
+                            "date": date.strftime("%Y-%m-%d"),
+                            "buy_price": round(price, 2),
+                            "contribution": round(invest_amount, 2),
+                            "shares": round(shares, 6),
+                            "strategy": "buy_the_dip_non_immediate",
+                            "worst_change_in_window": round(worst_change, 2),
+                            "window_days": step,
+                        })
+
+        # 3) update prev_close for “immediate” dip strategy
         prev_close = price
 
     final_price = float(df.iloc[-1]["Close"])
 
-    # If using buy-the-dip and there is leftover cash, treat it as a final interval
-    if strategy == "buy_the_dip" and accumulated_cash > 0:
+    # If using a dip strategy and there is leftover cash, add a final “uninvested” interval
+    if strategy in ("buy_the_dip", "buy_the_dip_non_immediate") and accumulated_cash > 0:
         intervals.append({
             "date": df["Date"].iloc[-1].strftime("%Y-%m-%d"),
-            "buy_price": None,               # no actual buy price
+            "buy_price": None,
             "contribution": round(accumulated_cash, 2),
-            "shares": 0.0,                   # not invested
-            "strategy": "buy_the_dip_uninvested",
+            "shares": 0.0,
+            "strategy": f"{strategy}_uninvested",
             "percent_change_vs_prev": None,
         })
-        # accumulated_cash is already included in total_invested; do NOT change shares_owned
+
     if strategy == "dca":
         final_value = shares_owned * final_price
-        total_return = final_value - total_invested
-        total_return_pct = (total_return / total_invested * 100) if total_invested > 0 else 0.0
-    else:  # buy_the_dip
+    else:
+        # invested shares + any leftover accumulated_cash
         final_value = shares_owned * final_price + accumulated_cash
-        total_return = final_value - total_invested
-        total_return_pct = (total_return / total_invested * 100) if total_invested > 0 else 0.0
 
-    # compute per-interval final value and profit
+    total_return = final_value - total_invested
+    total_return_pct = (total_return / total_invested * 100) if total_invested > 0 else 0.0
+
     for it in intervals:
         if it["shares"] > 0:
             it["final_value"] = round(it["shares"] * final_price, 2)
             it["profit"] = round(it["final_value"] - it["contribution"], 2)
         else:
-            # uninvested cash: final value equals contribution, profit = 0
             it["final_value"] = round(it["contribution"], 2)
             it["profit"] = 0.0
-
 
     return jsonify({
         "total_invested": round(total_invested, 2),

@@ -68,8 +68,13 @@
           <strong>DCA</strong>: Invest the same amount at each interval regardless of market moves.
         </div>
         <div>
-          <strong>Buying the Dip</strong>: Add cash each interval but only invest when the S&amp;P 500
+          <strong>Buying the Dip (Immediate)</strong>: Add cash each interval but only invest when the S&amp;P 500
           falls at least the chosen % vs the previous trading day; all accumulated cash is used on dip days.
+        </div>
+        <div>
+          <strong>Buying the Dip (Non-immediate)</strong>: Add cash each interval but only invest when the S&amp;P 500
+          falls at least the chosen % vs the worst price in the lookback window (e.g. 7 days if 'week' is selected); 
+          all accumulated cash is used on dip days.
         </div>
       </div>
 
@@ -82,7 +87,11 @@
           </label><br>
           <label style="font-size: 13px;">
             <input type="radio" name="strategy" value="buy_the_dip">
-            Buying the Dip
+            Buying the Dip (Immediate)
+          </label><br>
+          <label style="font-size: 13px;">
+            <input type="radio" name="strategy" value="buy_the_dip_non_immediate">
+            Buying the Dip (Non-immediate)
           </label>
         </div>
 
@@ -126,7 +135,7 @@
             <tr>
               <th style="border-bottom: 1px solid #d1d5db; text-align: left; padding: 4px 6px;">#</th>
               <th style="border-bottom: 1px solid #d1d5db; text-align: left; padding: 4px 6px;">Date</th>
-              <th style="border-bottom: 1px solid #d1d5db; text-align: right; padding: 4px 6px;">Index</th>
+              <th style="border-bottom: 1px solid #d1d5db; text-align: right; padding: 4px 6px;">Index value</th>
               <th style="border-bottom: 1px solid #d1d5db; text-align: right; padding: 4px 6px;">Contribution</th>
               <th style="border-bottom: 1px solid #d1d5db; text-align: right; padding: 4px 6px;">Shares</th>
               <th style="border-bottom: 1px solid #d1d5db; text-align: right; padding: 4px 6px;">Final value</th>
@@ -245,9 +254,9 @@
   if (strategyRadios && dipWrapper && dipInput) {
     strategyRadios.forEach(r => {
       r.addEventListener('change', () => {
-        if (r.value === 'buy_the_dip' && r.checked) {
+        if ((r.value === 'buy_the_dip' || r.value === 'buy_the_dip_non_immediate') && r.checked) {
           dipWrapper.style.display = 'block';
-        } else if (r.value === 'dca' && r.checked) {
+        } else if (r.checked && r.value === 'dca') {
           dipWrapper.style.display = 'none';
         }
       });
@@ -258,9 +267,10 @@
     e.preventDefault();
     const interval = document.querySelector('input[name="interval"]:checked').value;
     const strategy = document.querySelector('input[name="strategy"]:checked').value;
-    const dipThreshold = strategy === 'buy_the_dip'
-      ? parseFloat((dipInput && dipInput.value) || '0')
-      : 0;
+    const dipThreshold =
+      (strategy === 'buy_the_dip' || strategy === 'buy_the_dip_non_immediate')
+        ? parseFloat((dipInput && dipInput.value) || '0')
+        : 0;
 
     const payload = {
       start_year: parseInt(startSlider.value),
